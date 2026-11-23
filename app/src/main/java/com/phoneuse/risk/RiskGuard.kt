@@ -37,6 +37,7 @@ object RiskGuard {
     // money context ([isMoneyTransfer]): "File transfer" is not a payment.
     private val money = Keywords(
         listOf(
+            "भुगतान", "पेमेंट", "पैसे भेजें", "खरीदें", "ट्रांसफर करें",
             "결제", "구매", "주문", "송금", "이체", "충전하기", "정기결제", "해지", "카드 등록", "카드등록", "카드 추가", "카드추가", "선물하기", "예약하기",
             "무료 체험", "무료체험", "멤버십 가입", "멤버십가입",
             // Japanese
@@ -82,6 +83,7 @@ object RiskGuard {
 
     private val security = Keywords(
         listOf(
+            "पासवर्ड", "लॉगिन", "लॉग इन", "साइन इन", "ओटीपी", "यूपीआई पिन",
             "비밀번호", "암호", "로그인", "로그아웃", "인증", "탈퇴", "기기 관리자", "기기관리자",
             "パスワード", "ログイン", "ログアウト", "サインイン", "サインアウト", "認証", "退会", "暗証番号", "デバイス管理",
             "密码", "密碼", "登录", "登入", "登出", "注销", "註銷", "验证", "驗證", "设备管理", "裝置管理",
@@ -118,6 +120,7 @@ object RiskGuard {
 
     private val delete = Keywords(
         listOf(
+            "डिलीट", "हटाएं", "मिटाएं",
             "삭제", "지우기", "제거", "비우기", "영구", "휴지통으로", "휴지통 이동", "휴지통에", "초기화", "포맷", "버리기",
             "削除", "消去", "初期化", "ゴミ箱", "空にする", "完全に",
             "删除", "刪除", "清空", "清除", "移除", "卸载", "卸載", "重置", "恢复出厂", "恢復原廠", "回收站", "資源回收",
@@ -150,6 +153,7 @@ object RiskGuard {
     // Only in a social app ([socialPackages]) is a bare "공유"/"Share" the final post button.
     private val send = Keywords(
         listOf(
+            "भेजें", "भेजो", "प्रकाशित करें",
             "전송", "보내기", "게시", "등록", "제출", "올리기", "작성 완료", "작성완료",
             "送信", "投稿", "提出", "公開",
             "发送", "發送", "傳送", "送出", "发布", "發布", "發佈", "发表", "發表", "提交", "发帖",
@@ -164,6 +168,7 @@ object RiskGuard {
     // The high-precision part of each list ([RiskMatch.strong]): these always ask, whatever the AI judge says.
     private val strongMoney = Keywords(
         listOf(
+            "भुगतान", "पैसे भेजें", "पेमेंट करें", "ट्रांसफर करें",
             "결제", "구매", "송금", "이체", "주문하기",
             "購入", "支払", "決済", "送金", "振込", "振り込み", "課金",
             "支付", "付款", "购买", "購買", "下单", "下單", "转账", "轉帳", "汇款", "匯款",
@@ -172,6 +177,7 @@ object RiskGuard {
     )
     private val strongSecurity = Keywords(
         listOf(
+            "पासवर्ड", "यूपीआई पिन", "ओटीपी",
             "비밀번호", "탈퇴", "기기 관리자", "기기관리자",
             "パスワード", "退会", "暗証番号", "デバイス管理",
             "密码", "密碼", "注销", "註銷", "设备管理", "裝置管理",
@@ -179,7 +185,8 @@ object RiskGuard {
         listOf("password", "device admin"),
     )
     private val strongDelete = Keywords(
-        listOf("삭제", "영구", "削除", "删除", "刪除", "卸载", "卸載", "恢复出厂", "恢復原廠", "휴지통 비우기", "휴지통비우기"),
+        listOf("डिलीट", "मिटाएं",
+            "삭제", "영구", "削除", "删除", "刪除", "卸载", "卸載", "恢复出厂", "恢復原廠", "휴지통 비우기", "휴지통비우기"),
         listOf(
             "delete", "uninstall", "format sd", "format card", "format storage", "format usb",
             "empty trash", "empty bin", "permanently", "wipe",
