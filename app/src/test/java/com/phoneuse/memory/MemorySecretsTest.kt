@@ -27,6 +27,19 @@ class MemorySecretsTest {
         }
     }
 
+    @Test fun refusesIndianIdentityDocumentsAndHindiSecrets() {
+        for (text in listOf(
+            "Aadhaar 2345 6789 0123",
+            "PAN ABCDE1234F",
+            "ओटीपी: 983471",
+            "यूपीआई पिन 1234",
+            "मेरे पासवर्ड: abc12345",
+        )) {
+            assertNotNull(text, MemorySecrets.refusal(text))
+        }
+        assertNull(MemorySecrets.refusal("I prefer Hinglish and polite replies"))
+    }
+
     @Test fun keepsOrdinaryFacts() {
         for (text in listOf(
             "사용자는 비밀번호 관리자를 쓴다",
