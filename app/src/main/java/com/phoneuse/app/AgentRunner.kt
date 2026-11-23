@@ -633,6 +633,7 @@ class AgentRunner(
                     // The switch never widens a routine run: nobody wrote this request just now.
                     confirmSend = settings.confirmSend.first() || source == Source.ROUTINE,
                     screenshots = settings.screenContent.first() == ScreenContent.ALL,
+                    adaptiveCapture = true,
                     fixedSend = routine?.fixedSend,
                     appContext = context,
                     inlineRisk = settings.riskJudge.first(),
