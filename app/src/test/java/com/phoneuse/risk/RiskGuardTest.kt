@@ -6,6 +6,14 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class RiskGuardTest {
+    @Test fun loginNeedsChatApprovalBeforeSensitiveAccountAccess() {
+        for (label in listOf("लॉगिन", "लॉग इन", "Sign in", "Log in")) {
+            val match = RiskGuard.match(label, "com.example.app")
+            assertEquals(label, RiskCategory.SECURITY, match?.category)
+            assertTrue(label, match?.strong == true)
+        }
+    }
+
     @Test fun hindiFinancialAccountAndMessagingActionsAreGuarded() {
         assertEquals(RiskCategory.MONEY, RiskGuard.classify("भुगतान करें", null))
         assertEquals(RiskCategory.MONEY, RiskGuard.classify("पैसे भेजें", null))
