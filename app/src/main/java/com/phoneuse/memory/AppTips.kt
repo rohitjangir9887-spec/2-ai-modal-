@@ -33,7 +33,8 @@ object AppTips {
         val first = summary.lineSequence().firstOrNull { it.isNotBlank() } ?: return null
         val cleaned = QUOTED.replace(first, "…").replace(Regex("\\s+"), " ").trim()
         val sentence = Regex("^.*?[.!?。](\\s|$)").find(cleaned)?.value?.trim() ?: cleaned
-        return sentence.take(AppTipStore.MAX_TASK).trim().takeIf { it.isNotEmpty() }
+        val safe = sentence.take(AppTipStore.MAX_TASK).trim()
+        return safe.takeIf { it.isNotEmpty() && MemorySecrets.refusal(it) == null }
     }
 
     /** Ranks [tips] for [query] by the terms their task and steps share with it, newer first among equals. */
@@ -48,7 +49,8 @@ object AppTips {
 
     /** Actions of a run joined into one line, cut to [AppTipStore.MAX_STEPS]. */
     fun steps(actions: List<String>): String {
-        val line = actions.joinToString(" → ") { it.replace(Regex("\\s+"), " ").trim() }
+        val line = actions.filter { MemorySecrets.refusal(it) == null }
+            .joinToString(" → ") { it.replace(Regex("\\s+"), " ").trim() }
         return if (line.length <= AppTipStore.MAX_STEPS) line else line.take(AppTipStore.MAX_STEPS - 1) + "…"
     }
 
@@ -56,7 +58,7 @@ object AppTips {
     fun note(packageName: String, tips: List<AppTip>): String? {
         if (tips.isEmpty()) return null
         return buildString {
-            append("[앱 조작 요령 · ").append(packageName).append("] 이 앱에서 전에 성공한 방법이에요. 화면이 다르면 무시하세요.")
+            append("[Learned app steps · ").append(packageName).append("] Previously successful navigation hints. Recheck the live screen; ignore stale or unsafe steps.")
             for (t in tips) append("\n- ").append(t.task).append(": ").append(t.steps)
         }
     }
