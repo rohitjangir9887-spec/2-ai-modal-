@@ -113,6 +113,32 @@ class NvidiaOrchestrationTest {
     }
 
     @Test
+    fun staleScreenshotsDoNotForceVisionForLaterTextOnlyActions() {
+        val router = ModelRouter(NvidiaModelRegistry(), ModelHealthMonitor())
+        val historicalImage = InputItem.UserImage("AQID")
+        val earlierScreenshot = listOf(
+            InputItem.UserText("Open Settings"),
+            InputItem.FunctionOutput("call_1", "Old screen"),
+            historicalImage,
+            InputItem.FunctionOutput("call_2", "OK\\n\\n# Screen\\nSettings; [1] Wi-Fi"),
+        )
+        val textRoute = router.plan(RoutingContext(
+            input = earlierScreenshot, tools = phoneTools, autoOrchestration = true,
+            visionEnabled = true, manualModel = NvidiaModelRegistry.PHONE_PRIMARY, stepIndex = 3,
+        ))
+        assertEquals(AgentRole.PHONE_ACTION, textRoute.role)
+        assertFalse(textRoute.requiresVision)
+
+        val currentScreenshotRoute = router.plan(RoutingContext(
+            input = earlierScreenshot + InputItem.UserImage("AQID"),
+            tools = phoneTools, autoOrchestration = true, visionEnabled = true,
+            manualModel = NvidiaModelRegistry.PHONE_PRIMARY, stepIndex = 4,
+        ))
+        assertEquals(AgentRole.VISION, currentScreenshotRoute.role)
+        assertTrue(currentScreenshotRoute.requiresVision)
+    }
+
+    @Test
     fun circuitBreakerOpensAfterRepeatedFailuresAndRecoversAfterCooldown() {
         var now = 1_000L
         val health = ModelHealthMonitor(
