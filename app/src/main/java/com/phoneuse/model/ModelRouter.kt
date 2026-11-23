@@ -150,14 +150,24 @@ class ModelRouter(
         }
     }
 
-    private fun containsImages(input: List<InputItem>): Boolean =
-        input.any { item ->
+    /**
+     * Only the most recent observation determines whether the NEXT model call needs vision.
+     * Old screenshot attachments remain in the conversation for context, but must not force
+     * every subsequent phone action back onto an expensive vision model. A new image that
+     * follows a tool result still selects vision; a later text-only result returns to phone action.
+     */
+    private fun containsImages(input: List<InputItem>): Boolean {
+        val recentObservation = input.indexOfLast {
+            it is InputItem.FunctionOutput || it is InputItem.UserText
+        }
+        return input.drop(recentObservation.coerceAtLeast(0)).any { item ->
             when (item) {
                 is InputItem.UserImage -> true
                 is InputItem.UserText -> item.images.isNotEmpty()
                 else -> false
             }
         }
+    }
 
     private fun latestUserText(input: List<InputItem>): String =
         input.asReversed().firstNotNullOfOrNull { item ->
