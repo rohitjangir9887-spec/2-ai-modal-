@@ -26,6 +26,14 @@ class SecretRedactorTest {
     }
 
     @Test
+    fun hidesIndianIdentityNumbers() {
+        val clean = SecretRedactor.redact("Aadhaar 2345 6789 0123 PAN ABCDE1234F")
+        assertFalse(clean.contains("2345 6789 0123"))
+        assertFalse(clean.contains("ABCDE1234F"))
+        assertTrue(clean.contains("[REDACTED]"))
+    }
+
+    @Test
     fun redactsKnownRuntimeSecretsLiterally() {
         val raw = "error connecting with custom-key-abc-999111"
         val clean = SecretRedactor.redact(raw, listOf("custom-key-abc-999111"))
