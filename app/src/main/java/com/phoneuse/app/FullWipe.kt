@@ -59,6 +59,11 @@ object FullWipe {
                 },
                 tr("Notifications", "알림") to { app.getSystemService(NotificationManager::class.java)?.cancelAll() },
                 tr("Temporary photos", "사진 임시 파일") to { File(app.cacheDir, "camera").deleteRecursively() },
+                tr("Task logs and checkpoints", "작업 기록 및 체크포인트") to {
+                    AppGraph.checkpoints.clear()
+                    AppGraph.taskLogs.clear()
+                    NvidiaOrchestrator.reset()
+                },
                 // Last, after every delete: deleted text leaves the full-text segments and the free pages.
                 tr("Storage cleanup", "저장 공간 정리") to {
                     val db = ChatDb.get(app).writable

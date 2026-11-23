@@ -460,7 +460,13 @@ private fun AppRoot(
             val listed = ModelProviders.listModels(mode, key, AppGraph.http, baseUrl)
             // A newer model of the default's family becomes the default, unless one was picked.
             settings.rememberListedModels(mode, listed)
-            shown.copy(listed = listed, defaultModel = ModelProviders.upgrades(mode, listed).first ?: shown.defaultModel)
+            val merged = if (mode == com.phoneuse.app.AuthMode.NVIDIA) {
+                com.phoneuse.app.NvidiaOrchestrator.registry.updateDiscoveredCatalog(listed)
+                (listed + com.phoneuse.app.NvidiaOrchestrator.registry.discoveredModels).distinct()
+            } else {
+                listed
+            }
+            shown.copy(listed = merged, defaultModel = ModelProviders.upgrades(mode, merged).first ?: shown.defaultModel)
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
         } catch (e: Exception) {

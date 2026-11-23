@@ -19,6 +19,12 @@ class CompressedScreen(
     val listContinues: Boolean = false,
     /** This observation was redacted after capture failed. Screen actions need a fresh visible observation. */
     val captureBlocked: Boolean = false,
+    /** A modal dialog, permission prompt, or bottom sheet appears active in the tree. */
+    val hasDialogOrPopup: Boolean = false,
+    /** A spinner or loading label suggests dynamic screen transition in progress. */
+    val hasLoadingIndicator: Boolean = false,
+    /** Non-null when visual interpretation (Vision Agent) adds value over pure accessibility text. */
+    val recommendedVisionReason: String? = null,
 ) {
     /** Where to touch element [index]: the centre of its bounds clipped to the display. */
     fun tapPoint(index: Int): Pair<Int, Int> {
@@ -61,10 +67,43 @@ object TreeCompressor {
         }
         val omitted = entries.size - shown.size
         if (omitted > 0) sb.append("\n... ($omitted more elements omitted)")
+        val hasDialog = shown.any { isDialogNode(it.node) } || s.activeIsSystem
+        val hasLoading = shown.any { isLoadingNode(it.node, it.fullLabel) }
+        val unlabeledActionableCount = shown.count { it.node.isActionable && it.fullLabel.isBlank() }
+        val hasSurface = hasSurfaceSubtree(s)
+        val visionReason = when {
+            hasSurface -> "surface-or-canvas"
+            unlabeledActionableCount >= 3 -> "unlabeled-icons"
+            shown.isEmpty() -> "empty-tree"
+            else -> null
+        }
         return CompressedScreen(
             sb.toString(), elements, labels, s.packageName, fullLabels, s.displayWidth, s.displayHeight, s.density,
             continues,
+            hasDialogOrPopup = hasDialog,
+            hasLoadingIndicator = hasLoading,
+            recommendedVisionReason = visionReason,
         )
+    }
+
+    private fun isDialogNode(n: UiNode): Boolean {
+        val cls = n.className?.lowercase() ?: return false
+        return "dialog" in cls || "bottomsheet" in cls || "popupwindow" in cls || "alertdialog" in cls
+    }
+
+    private fun isLoadingNode(n: UiNode, label: String): Boolean {
+        val cls = n.className?.lowercase().orEmpty()
+        if ("progressbar" in cls) return true
+        val l = label.lowercase()
+        return l == "loading..." || l == "loading" || l == "로딩 중"
+    }
+
+    private fun hasSurfaceSubtree(s: ScreenSnapshot): Boolean {
+        fun visit(n: UiNode): Boolean {
+            if (isSurface(n.className)) return true
+            return n.children.any { visit(it) }
+        }
+        return s.appRoots.any { visit(it) }
     }
 
     private fun line(i: Int, e: Entry, s: ScreenSnapshot): String {

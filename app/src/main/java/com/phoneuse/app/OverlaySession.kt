@@ -31,7 +31,12 @@ import kotlinx.coroutines.withContext
  * The overlay side of one run. Nothing is shown and no touches are blocked until [engage]; once engaged,
  * [release] always gives touches back and hides the overlay, whatever happened.
  */
-internal class OverlaySession(private val onStop: () -> Unit, private val onSteer: (String) -> Boolean) {
+internal class OverlaySession(
+    private val onStop: () -> Unit,
+    private val onSteer: (String) -> Boolean,
+    private val onPauseToggle: () -> Unit = {},
+    private val onQueueTask: (String) -> Boolean = { false },
+) {
     @Volatile
     private var overlay: OverlayManager? = null
 
@@ -82,6 +87,8 @@ internal class OverlaySession(private val onStop: () -> Unit, private val onStee
         overlayGate = OverlayUserGate(manager)
         manager.onStop = onStop
         manager.onSteer = onSteer
+        manager.onPauseToggle = onPauseToggle
+        manager.onQueueTask = onQueueTask
         manager.state.value = AgentUiState(AgentPhase.THINKING, listOf(firstLine), null)
         manager.setBlocking(true)
         return try {
@@ -111,6 +118,28 @@ internal class OverlaySession(private val onStop: () -> Unit, private val onStee
 
     fun addLine(line: String) {
         overlay?.state?.update { withLine(it, line) }
+    }
+
+    fun setStatus(activeRole: String, activeModel: String, paused: Boolean, queuedCount: Int) {
+        val manager = overlay ?: return
+        val wasPaused = manager.state.value.paused
+        manager.state.update { s ->
+            val nextPhase = when {
+                paused -> AgentPhase.PAUSED
+                s.phase == AgentPhase.PAUSED -> AgentPhase.THINKING
+                else -> s.phase
+            }
+            s.copy(
+                phase = nextPhase,
+                activeRole = activeRole,
+                activeModel = activeModel,
+                paused = paused,
+                queuedCount = queuedCount,
+            )
+        }
+        if (wasPaused != paused) {
+            guarded("setBlockingPause") { manager.setBlocking(!paused) }
+        }
     }
 
     /**
@@ -145,6 +174,8 @@ internal class OverlaySession(private val onStop: () -> Unit, private val onStee
         guarded("hide") { manager.hide() }
         manager.onStop = {}
         manager.onSteer = { false }
+        manager.onPauseToggle = {}
+        manager.onQueueTask = { false }
         overlay = null
         overlayGate = null
     }

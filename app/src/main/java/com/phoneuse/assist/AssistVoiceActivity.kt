@@ -9,6 +9,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberCoroutineScope
 import com.phoneuse.app.AppGraph
 import com.phoneuse.app.FontSize
 import com.phoneuse.app.ThemeMode
@@ -16,6 +17,8 @@ import com.phoneuse.ui.theme.PhoneUseTheme
 import com.phoneuse.ui.theme.isDark
 import com.phoneuse.ui.voice.VoiceSheet
 import com.phoneuse.ui.voice.rememberVoiceInput
+import com.phoneuse.voice.VoiceSessionManager
+import kotlinx.coroutines.launch
 
 /**
  * Voice input for windows that cannot host it themselves: the assistant sheet's 🎤 (the sheet hides and starts
@@ -82,7 +85,21 @@ class AssistVoiceActivity : ComponentActivity() {
                     }
                 }
                 // An outstanding permission or system recognition result is delivered to the recreated launcher.
-                VoiceSheet(voice, autoStart = autoStart, onDismiss = dismiss)
+                val continuous by AppGraph.settings.nvidiaContinuousVoice.collectAsState(initial = false)
+                val uiScope = rememberCoroutineScope()
+                LaunchedEffect(continuous) {
+                    VoiceSessionManager.shared.setContinuousMode(continuous)
+                }
+                VoiceSheet(
+                    voice,
+                    autoStart = autoStart,
+                    onDismiss = dismiss,
+                    continuousMode = continuous,
+                    onContinuousChange = { next ->
+                        VoiceSessionManager.shared.setContinuousMode(next)
+                        uiScope.launch { AppGraph.settings.setNvidiaContinuousVoice(next) }
+                    },
+                )
             }
         }
     }

@@ -63,6 +63,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -124,7 +125,7 @@ data class AccountInfo(
         get() = when (mode) {
             AuthMode.CHATGPT -> if (chatGptSignedIn) tr("Signed in to ChatGPT", "ChatGPT 로그인됨") + (email?.let { " · $it" } ?: "") else tr("Sign-in needed", "로그인이 필요해요")
             AuthMode.API_KEY -> if (hasApiKey) tr("Using API key", "API 키 사용 중") else tr("Enter an API key", "API 키를 넣어 주세요")
-            AuthMode.CLAUDE, AuthMode.GROK, AuthMode.GEMINI -> ModelProviders.label(mode) + " · " +
+            AuthMode.CLAUDE, AuthMode.GROK, AuthMode.GEMINI, AuthMode.NVIDIA -> ModelProviders.label(mode) + " · " +
                 if (hasApiKey) tr("Using API key", "API 키 사용 중") else tr("Enter an API key", "API 키를 넣어 주세요")
             AuthMode.COMPATIBLE -> ModelProviders.label(mode) + " · " + when {
                 compatibleBaseUrl.isBlank() -> tr("Enter the server address", "서버 주소를 넣어 주세요")
@@ -185,6 +186,7 @@ fun SettingsScreen(
     var choice by rememberSaveable { mutableStateOf<Choice?>(null) }
     var permissionsOpen by rememberSaveable { mutableStateOf(false) }
     var licensesOpen by rememberSaveable { mutableStateOf(false) }
+    var nvidiaOpen by rememberSaveable { mutableStateOf(false) }
     var exporting by remember { mutableStateOf(false) }
     // A shorter retention that would delete conversations at once: (days, how many) until confirmed.
     var shorten by remember { mutableStateOf<Pair<Int, Int>?>(null) }
@@ -213,6 +215,11 @@ fun SettingsScreen(
         LicensesPage(onBack = { licensesOpen = false }, modifier = modifier)
         return
     }
+    if (nvidiaOpen) {
+        BackHandler { nvidiaOpen = false }
+        NvidiaSettingsPage(settings, onBack = { nvidiaOpen = false }, modifier = modifier)
+        return
+    }
 
     Column(
         modifier
@@ -235,7 +242,7 @@ fun SettingsScreen(
                 .verticalScroll(rememberScrollState())
                 .padding(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 24.dp),
         ) {
-            AccountCard(settings, http, account, scope = scope, onAccountChanged = onAccountChanged, onOpenUsage = onOpenUsage)
+            AccountCard(settings, http, account, scope = scope, onAccountChanged = onAccountChanged, onOpenUsage = onOpenUsage, onOpenNvidia = { nvidiaOpen = true })
 
             Section("AI")
             Group {
@@ -246,6 +253,13 @@ fun SettingsScreen(
                     else -> modelDisplayName(model)
                 }
                 ValueRow(tr("Default model", "기본 모델"), modelValue, onClick = onOpenModelSheet, first = true)
+                if (account.mode == AuthMode.NVIDIA) {
+                    SubRow(
+                        tr("NVIDIA multi-agent & pointer", "NVIDIA 멀티 에이전트 · 포인터"),
+                        tr("Specialist roles, failover, touch pointer & live voice", "역할 배정 · 페일오버 · 포인터 · 실시간 음성"),
+                        onClick = { nvidiaOpen = true },
+                    )
+                }
                 if (ModelProviders.supportsFast(account.mode)) SwitchRow(FAST_MODE_LABEL, tr("Faster answers, uses your plan or credits faster", "답이 빨라지고 요금제나 크레딧을 더 빨리 써요"), fast) { v -> scope.launch { settings.setFastMode(v) } }
                 ValueRow(REASONING_EFFORT_LABEL, EFFORT_OPTIONS.first { it.first == effort }.second, onClick = onOpenModelSheet)
                 SwitchRow(tr("Web search", "웹 검색"), tr("Looks things up on the web when needed and shows sources", "필요하면 웹에서 찾아보고 출처를 보여줘요"), webSearch) { v -> scope.launch { settings.setWebSearch(v) } }
@@ -648,6 +662,7 @@ private fun AccountCard(
     scope: CoroutineScope,
     onAccountChanged: () -> Unit,
     onOpenUsage: () -> Unit,
+    onOpenNvidia: () -> Unit,
 ) {
     val c = pu
     val context = LocalContext.current
@@ -736,15 +751,19 @@ private fun AccountCard(
                 onAccountChanged()
             }
         }
-        // OpenAI on the first row, the other providers (each with its own API key) on the second.
+        // OpenAI on the first row, other hosted providers on the second, NVIDIA NIM and Other on the third.
         Segmented(
             listOf(AuthMode.CHATGPT to tr("ChatGPT subscription", "ChatGPT 구독"), AuthMode.API_KEY to tr("OpenAI API key", "OpenAI API 키")),
             account.mode,
             choose,
         )
         Segmented(
-            listOf(AuthMode.CLAUDE, AuthMode.GROK, AuthMode.GEMINI).map { it to ModelProviders.label(it) } +
-                (AuthMode.COMPATIBLE to tr("Other", "기타")),
+            listOf(AuthMode.CLAUDE, AuthMode.GROK, AuthMode.GEMINI).map { it to ModelProviders.label(it) },
+            account.mode,
+            choose,
+        )
+        Segmented(
+            listOf(AuthMode.NVIDIA to ModelProviders.label(AuthMode.NVIDIA), AuthMode.COMPATIBLE to tr("Other", "기타")),
             account.mode,
             choose,
         )
@@ -835,6 +854,13 @@ private fun AccountCard(
                 error?.let { Text(it, fontSize = 12.5.sp, color = c.danger) }
             }
             AuthMode.COMPATIBLE -> CompatibleServerFields(settings, account, scope, onAccountChanged)
+            AuthMode.NVIDIA -> NvidiaAccountFields(
+                settings = settings,
+                http = http,
+                scope = scope,
+                onAccountChanged = onAccountChanged,
+                onOpenNvidia = onOpenNvidia,
+            )
             AuthMode.API_KEY, AuthMode.CLAUDE, AuthMode.GROK, AuthMode.GEMINI -> {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     val title = if (account.mode == AuthMode.API_KEY) tr("OpenAI API key", "OpenAI API 키") else ModelProviders.label(account.mode) + tr(" API key", " API 키")
@@ -877,6 +903,150 @@ private fun AccountCard(
         // Board Settings: the way to the Usage screen.
         UsageSummary(onOpenUsage)
     }
+}
+
+@Composable
+private fun NvidiaAccountFields(
+    settings: SettingsStore,
+    http: OkHttpClient,
+    scope: CoroutineScope,
+    onAccountChanged: () -> Unit,
+    onOpenNvidia: () -> Unit,
+) {
+    val c = pu
+    var keyText by rememberSaveable { mutableStateOf("") }
+    var keySaved by remember { mutableStateOf(false) }
+    var busy by remember { mutableStateOf(false) }
+    var statusText by remember { mutableStateOf<String?>(null) }
+    var statusOk by remember { mutableStateOf(true) }
+    LaunchedEffect(Unit) {
+        keyText = settings.providerKey(AuthMode.NVIDIA).first()
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(tr("NVIDIA NIM API key", "NVIDIA NIM API 키"), fontSize = 16.sp, fontWeight = FontWeight.Bold, color = c.text)
+        Text(
+            tr("Enter once; stored encrypted on this device. Supports multi-agent routing, probing & failover.", "한 번 입력하면 기기 안에 암호화해서 저장해요. 멀티 에이전트 라우팅·모델 검증·페일오버를 지원해요."),
+            fontSize = 12.5.sp,
+            lineHeight = 17.sp,
+            color = c.textSub,
+        )
+    }
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        val fieldShape = RoundedCornerShape(14.dp)
+        Box(
+            Modifier
+                .weight(1f)
+                .height(44.dp)
+                .clip(fieldShape)
+                .border(1.dp, c.inputBorder, fieldShape)
+                .padding(horizontal = 14.dp),
+            contentAlignment = Alignment.CenterStart,
+        ) {
+            if (keyText.isEmpty()) Text(ModelProviders.keyHint(AuthMode.NVIDIA), fontSize = 15.sp, color = c.textSub)
+            BasicTextField(
+                keyText,
+                { keyText = it; keySaved = false },
+                singleLine = true,
+                visualTransformation = PasswordVisualTransformation(),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, autoCorrectEnabled = false),
+                textStyle = TextStyle(fontFamily = PlexSans, fontSize = 15.sp, color = c.text),
+                cursorBrush = SolidColor(c.accent),
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+        PuButton(
+            if (keySaved) tr("Saved", "저장됨") else tr("Save", "저장"),
+            {
+                scope.launch {
+                    settings.setProviderKey(AuthMode.NVIDIA, keyText)
+                    keySaved = true
+                    onAccountChanged()
+                }
+            },
+            modifier = Modifier.testTag("nvidia_save_key"),
+            height = 44.dp,
+            radius = 12.dp,
+            fontSize = 14,
+        )
+    }
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        PuButton(
+            tr("Test Connection", "연결 테스트"),
+            {
+                if (busy) return@PuButton
+                busy = true
+                statusText = tr("Testing NVIDIA NIM connection…", "NVIDIA NIM 연결 확인 중…")
+                statusOk = true
+                scope.launch {
+                    try {
+                        settings.setProviderKey(AuthMode.NVIDIA, keyText)
+                        val activeKey = settings.providerKey(AuthMode.NVIDIA).first()
+                        val res = com.phoneuse.app.NvidiaOrchestrator.testConnection(activeKey, http)
+                        statusOk = res.ok
+                        statusText = if (res.ok) {
+                            onAccountChanged()
+                            tr("Connected · ${res.discoveredCount} models (${res.latencyMs}ms)", "연결됨 · ${res.discoveredCount}개 모델 (${res.latencyMs}ms)")
+                        } else {
+                            com.phoneuse.security.SecretRedactor.redact(res.message)
+                        }
+                    } finally {
+                        busy = false
+                    }
+                }
+            },
+            Modifier.weight(1f).testTag("nvidia_test_connection"),
+            kind = ButtonKind.OUTLINE,
+            enabled = !busy,
+            height = 40.dp,
+            radius = 12.dp,
+            fontSize = 13,
+        )
+        PuButton(
+            tr("Discover Models", "모델 검색"),
+            {
+                if (busy) return@PuButton
+                busy = true
+                statusText = tr("Discovering and probing NVIDIA models…", "NVIDIA 모델 검색 및 기능 테스트 중…")
+                statusOk = true
+                scope.launch {
+                    try {
+                        settings.setProviderKey(AuthMode.NVIDIA, keyText)
+                        val activeKey = settings.providerKey(AuthMode.NVIDIA).first()
+                        val res = com.phoneuse.app.NvidiaOrchestrator.discoverAndProbe(activeKey, http, probeDefaultRoles = true)
+                        val okCount = res.probes.count { it.chatOk }
+                        val visionCount = res.probes.count { it.visionOk == true }
+                        statusOk = res.listedModels.isNotEmpty() || okCount > 0
+                        statusText = tr(
+                            "Listed ${res.listedModels.size} · Ready $okCount/${res.probes.size} · Vision $visionCount",
+                            "목록 ${res.listedModels.size}개 · 사용 가능 $okCount/${res.probes.size} · 비전 $visionCount",
+                        )
+                        onAccountChanged()
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        statusOk = false
+                        statusText = com.phoneuse.security.SecretRedactor.redact(e.message ?: tr("Discovery failed", "모델 검색 실패"))
+                    } finally {
+                        busy = false
+                    }
+                }
+            },
+            Modifier.weight(1f).testTag("nvidia_discover_models"),
+            kind = ButtonKind.OUTLINE,
+            enabled = !busy,
+            height = 40.dp,
+            radius = 12.dp,
+            fontSize = 13,
+        )
+    }
+    statusText?.let { msg ->
+        Text(msg, fontSize = 12.5.sp, color = if (statusOk) c.success else c.danger)
+    }
+    SubRow(
+        tr("Roles, pointer & live voice", "역할 배정 · 포인터 · 실시간 음성"),
+        tr("Configure Manager/Vision/Action/Coding/Fast & health", "관리자·비전·액션·코딩·고속 모델 및 상태 보기"),
+        onClick = onOpenNvidia,
+    )
 }
 
 /** Settings for [AuthMode.COMPATIBLE]: a known server or any address, and its key (none for a local server). */

@@ -19,8 +19,10 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -30,14 +32,20 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.paneTitle
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.phoneuse.app.ReadAloud
 import com.phoneuse.i18n.tr
 import com.phoneuse.ui.theme.IconBtn
+import com.phoneuse.ui.theme.PlexSans
 import com.phoneuse.ui.theme.PuIcons
 import com.phoneuse.ui.theme.pu
+import com.phoneuse.voice.VoiceSessionManager
 
 /**
  * The assistant's voice sheet (AssistVoiceActivity): a compact card at the bottom, styled like the assistant
@@ -45,8 +53,16 @@ import com.phoneuse.ui.theme.pu
  * when [autoStart]. Tapping the scrim calls [onDismiss].
  */
 @Composable
-fun VoiceSheet(voice: VoiceInput, autoStart: Boolean, onDismiss: () -> Unit) {
+fun VoiceSheet(
+    voice: VoiceInput,
+    autoStart: Boolean,
+    onDismiss: () -> Unit,
+    continuousMode: Boolean = false,
+    onContinuousChange: ((Boolean) -> Unit)? = null,
+) {
     val c = pu
+    val speaking by ReadAloud.speaking.collectAsState()
+    val liveVoice by VoiceSessionManager.shared.state.collectAsState()
     var shown by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
         shown = true
@@ -82,10 +98,69 @@ fun VoiceSheet(voice: VoiceInput, autoStart: Boolean, onDismiss: () -> Unit) {
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                    IconBtn(PuIcons.Close, tr("Cancel voice input", "음성 입력 취소"), onDismiss, tint = pu.textSub, iconSize = 20.dp)
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                        if (onContinuousChange != null) {
+                            Box(
+                                Modifier
+                                    .testTag("voice_continuous_toggle")
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(if (continuousMode) c.accentSoft else c.sunken)
+                                    .clickable { onContinuousChange(!continuousMode) }
+                                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                            ) {
+                                Text(
+                                    if (continuousMode) tr("Continuous: On", "연속 대화: 켜짐") else tr("Continuous", "연속 대화"),
+                                    color = if (continuousMode) c.accentText else c.textSub,
+                                    fontFamily = PlexSans,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Medium,
+                                )
+                            }
+                        }
+                        if (speaking || liveVoice.muted) {
+                            Box(
+                                Modifier
+                                    .testTag("voice_mute_or_stop_tts")
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(c.sunken)
+                                    .clickable {
+                                        if (speaking) {
+                                            VoiceSessionManager.shared.bargeIn()
+                                            ReadAloud.stop()
+                                        } else {
+                                            VoiceSessionManager.shared.toggleMute()
+                                        }
+                                    }
+                                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                            ) {
+                                Text(
+                                    if (speaking) tr("Interrupt speech", "말 끊기") else tr("Unmute", "음소거 해제"),
+                                    color = c.text,
+                                    fontFamily = PlexSans,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Medium,
+                                )
+                            }
+                        }
+                    }
+                    IconBtn(
+                        PuIcons.Close,
+                        tr("Cancel voice input", "음성 입력 취소"),
+                        onDismiss,
+                        tint = pu.textSub,
+                        iconSize = 20.dp,
+                        modifier = Modifier.testTag("voice_sheet_close"),
+                    )
                 }
-                VoiceOrb(voice.state, voice::toggle, size = 76.dp)
+                VoiceOrb(voice.state, {
+                    if (speaking) ReadAloud.stop()
+                    voice.toggle()
+                }, size = 76.dp)
                 VoiceCaption(
                     voice.state,
                     idleTitle = tr("Tap to speak", "눌러서 말하기"),

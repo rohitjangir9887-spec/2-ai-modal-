@@ -3,7 +3,7 @@ package com.phoneuse.overlay
 import com.phoneuse.i18n.tr
 import com.phoneuse.risk.RiskCategory
 
-enum class AgentPhase { IDLE, THINKING, ACTING, WAITING_USER }
+enum class AgentPhase { IDLE, THINKING, ACTING, WAITING_USER, PAUSED }
 
 /** [id] identifies one request; taps carry it so a stale card cannot answer a newer request. */
 sealed interface DockCard {
@@ -19,6 +19,11 @@ data class AgentUiState(
     val phase: AgentPhase = AgentPhase.IDLE,
     val lines: List<String> = emptyList(),
     val card: DockCard? = null,
+    val activeRole: String = "",
+    val activeModel: String = "",
+    val queuedCount: Int = 0,
+    val paused: Boolean = false,
+    val allLines: List<String> = emptyList(),
 )
 
 /** Sends to the displayed question or running task. A refused submission stays in the composer. */

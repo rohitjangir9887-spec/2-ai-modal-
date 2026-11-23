@@ -26,6 +26,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.LifecycleOwner
 import com.phoneuse.app.AppGraph
+import com.phoneuse.app.ReadAloud
 import com.phoneuse.app.voiceLanguageNow
 import com.phoneuse.i18n.tr
 import com.phoneuse.voice.VoiceEngine
@@ -118,7 +119,10 @@ fun rememberVoiceInput(
             onText = { latestText(it) },
             onPartial = { latestPartial(it) },
             onInterrupted = { latestInterrupted(it) },
-            onAudioActivity = { latestAudioActivity() },
+            onAudioActivity = {
+                ReadAloud.stop()
+                latestAudioActivity()
+            },
         )
     }
     DisposableEffect(recognizer) { onDispose { recognizer.destroy() } }
@@ -171,6 +175,7 @@ fun rememberVoiceInput(
         }
     }
     val begin = {
+        ReadAloud.stop()
         val granted = ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
         // The system dialog records in its own app; only the in-app recognizer needs our microphone permission.
         if (granted || recognizer.engine == VoiceEngine.Dialog) {

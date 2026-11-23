@@ -139,6 +139,9 @@ class AgentRunner(
     private val conversationSearch: ConversationSearch,
     /** Connected MCP servers and Google; their tools are added to each run. */
     private val connectors: Connectors? = null,
+    private val checkpoints: TaskCheckpointStore = TaskCheckpointStore(),
+    private val taskLogs: TaskExecutionLog = TaskExecutionLog(),
+    val taskQueue: TaskQueueManager = TaskQueueManager(),
 ) {
     private val scope = CoroutineScope(
         SupervisorJob() + Dispatchers.Default +
@@ -147,6 +150,8 @@ class AgentRunner(
     private val mainHandler = Handler(Looper.getMainLooper())
     private val runSlot = RunSlot()
     val running: StateFlow<Boolean> = runSlot.running
+    val paused: StateFlow<Boolean> = taskQueue.paused
+    val queuedTasks: StateFlow<List<QueuedTask>> = taskQueue.queuedTasks
 
     private val _activeConversation = MutableStateFlow<Long?>(null)
 
@@ -247,9 +252,12 @@ class AgentRunner(
 
     @Volatile private var job: Job? = null
     @Volatile private var finishing = false
+    @Volatile private var stopRequested = false
     @Volatile private var steering: SteeringQueue? = null
     @Volatile private var session: OverlaySession? = null
     @Volatile private var steps: MutableList<StepLog>? = null
+    @Volatile private var activeTaskId: String? = null
+    @Volatile private var activeStepCount = 0
 
     /**
      * Sends [text] to [conversationId], or to a new conversation titled with its first 30 characters when null.
@@ -273,18 +281,31 @@ class AgentRunner(
         }
         val files = source.allowed(attachments)
         var overlay: OverlaySession? = null
+        val taskId = java.util.UUID.randomUUID().toString()
         // Atomic: the slot is taken and the job published together, and an older run's completion frees the slot
         // only for its own job, so it can never free (or reset) this run while it is starting.
         val launched = runSlot.claim {
             finishing = false
+            stopRequested = false
             runSource = source
+            activeTaskId = taskId
+            activeStepCount = 0
             _currentTask.value = text.trim()
-            val o = OverlaySession(onStop = { stop() }, onSteer = { steer(it) })
+            taskQueue.tryAcquireActive(
+                QueuedTask(id = taskId, conversationId = conversationId, prompt = text.trim(), source = source),
+            )
+            val o = OverlaySession(
+                onStop = { stop() },
+                onSteer = { steer(it) },
+                onPauseToggle = { togglePause() },
+                onQueueTask = { queueTask(_activeConversation.value ?: conversationId, it, Source.APP) },
+            )
             overlay = o
             session = o
             // Lazy: the job is published before it can run, so stop() can never miss it.
-            scope.launch(start = CoroutineStart.LAZY) { run(conversationId, text, source, o, files, routine, suggested) }
-                .also { job = it }
+            scope.launch(start = CoroutineStart.LAZY) {
+                run(conversationId, text, source, o, files, routine, suggested, taskId)
+            }.also { job = it }
         }
         if (launched == null) {
             if (!quiet) toast(tr("Already running", "이미 실행 중이에요"))
@@ -296,23 +317,104 @@ class AgentRunner(
         // The run's end, or a job cancelled before its body ever ran: reset state, release the overlay, free the slot.
         launched.invokeOnCompletion {
             runSlot.release(launched) {
+                taskQueue.releaseActiveOnly()
                 started.releaseNow()
                 rawStream = ""
                 _streamingText.value = ""
                 _liveSteps.value = emptyList()
                 _liveSearches.value = 0
             }
+            if (!stopRequested) startNextQueued()
         }
         launched.start()
         return true
     }
 
+    /** Queues [text] cleanly behind any currently running task, or starts immediately if idle. */
+    fun queueTask(conversationId: Long?, text: String, source: Source = Source.APP): Boolean {
+        val clean = text.trim()
+        if (clean.isEmpty()) return false
+        if (!running.value && taskQueue.activeTask.value == null) {
+            return send(conversationId, clean, source)
+        }
+        val queued = taskQueue.enqueue(conversationId, clean, source) ?: return false
+        checkpoints.save(
+            TaskCheckpoint(
+                taskId = queued.id,
+                conversationId = conversationId ?: (_activeConversation.value ?: 0L),
+                prompt = clean,
+                status = TaskRunStatus.QUEUED,
+            ),
+        )
+        taskLogs.append(queued.id, "Queued next task: ${clean.take(80)}")
+        return true
+    }
+
+    fun cancelQueued(taskId: String): Boolean = taskQueue.cancelQueued(taskId).also { removed ->
+        if (removed) {
+            checkpoints.get(taskId)?.let { cp ->
+                checkpoints.save(cp.copy(status = TaskRunStatus.CANCELLED, updatedAtMs = System.currentTimeMillis()))
+            }
+            taskLogs.append(taskId, "Cancelled queued task")
+        }
+    }
+
+    fun togglePause(): Boolean {
+        if (!running.value) return false
+        val next = taskQueue.togglePaused()
+        updatePausedState(next)
+        return next
+    }
+
+    fun setPaused(paused: Boolean): Boolean {
+        if (!running.value) return false
+        val ok = taskQueue.setPaused(paused)
+        if (ok) updatePausedState(paused)
+        return ok
+    }
+
+    private fun updatePausedState(paused: Boolean) {
+        val status = NvidiaOrchestrator.activeStatus.value
+        session?.setStatus(status.role.displayName, status.modelId, paused, taskQueue.queuedTasks.value.size)
+        val tid = activeTaskId ?: return
+        taskLogs.append(tid, if (paused) "Paused at user request" else "Resumed")
+        checkpoints.get(tid)?.let { cp ->
+            checkpoints.save(
+                cp.copy(
+                    status = if (paused) TaskRunStatus.PAUSED else TaskRunStatus.RUNNING,
+                    updatedAtMs = System.currentTimeMillis(),
+                ),
+            )
+        }
+    }
+
+    private suspend fun awaitIfPaused() {
+        while (taskQueue.paused.value) {
+            delay(150L)
+        }
+    }
+
+    private fun startNextQueued() {
+        val next = taskQueue.popNextIfIdle() ?: return
+        taskQueue.releaseActiveOnly()
+        scope.launch {
+            delay(150L)
+            send(next.conversationId, next.prompt, next.source, quiet = true)
+        }
+    }
+
     fun stop() {
+        stopRequested = true
+        taskQueue.clearQueue()
+        taskQueue.setPaused(false)
         job?.cancel()
     }
 
     /** Stops the run and waits until it has ended: its reply, memories and tips are written (or dropped) by then. */
     suspend fun stopAndWait() {
+        stopRequested = true
+        taskQueue.clearQueue()
+        taskQueue.setPaused(false)
         job?.cancelAndJoin()
     }
 
@@ -333,15 +435,18 @@ class AgentRunner(
         attachments: List<Attachment> = emptyList(),
         routine: RoutineRun? = null,
         suggested: Boolean = false,
+        taskId: String = "",
     ) {
         // The run's state lives in [RunState] and its body in [runBody]: the end below stays in a small method.
         // A Stop used to abort the process here (ART: 'divide by zero' with a pending JobCancellationException)
         // while this cleanup sat at the end of the very large body, so nothing was saved, the chat never came
         // back and the running-task notification stayed.
-        val st = RunState()
+        val st = RunState().apply { this.taskId = taskId; this.prompt = text }
+        val metaWatcher = watchOverlayMeta(st, overlay)
         try {
             runBody(st, conversationId, text, source, overlay, attachments, routine, suggested)
         } finally {
+            metaWatcher.cancel()
             st.watcher?.cancel()
             val runJob = currentCoroutineContext().job
             withContext(NonCancellable) {
@@ -352,6 +457,7 @@ class AgentRunner(
                         st.usedMemories, st.remembered.toList(), st.forgotten.toList(), st.runSteps.toList(), st.runCards.toList(),
                         st.runExecutor?.thirdPartySeen == true, st.cancelled, source, st.learned, st.tipsOn, st.modelCalls.get(),
                         st.deviceUsed, st.stayInApp, st.outcome, st.runTitle, routine, st.serviceLost.get(), st.failureCode,
+                        st.taskId, st.prompt,
                     ),
                     runJob,
                 )
@@ -545,6 +651,7 @@ class AgentRunner(
                 } else {
                     null
                 },
+                awaitIfPaused = ::awaitIfPaused,
             )
             steps = st.runSteps
             steering = queue
@@ -602,6 +709,7 @@ class AgentRunner(
                     AgentEvent.Cancelled -> Unit
                 }
                 overlay.update(event)
+                recordEventProgress(st, event)
                 flagThirdPartyEarly(st.runExecutor, st.conversation, st.flaggedThirdParty)
             }
         } catch (e: NoServiceException) {
@@ -697,6 +805,8 @@ class AgentRunner(
         @Volatile var runExecutor: ToolExecutor? = null
         val flaggedThirdParty = AtomicBoolean(false)
         @Volatile var tipsOn = false
+        @Volatile var taskId: String = ""
+        @Volatile var prompt: String = ""
     }
 
     /** What a run leaves for [endRun]; kept out of run() itself, whose size already trips the verifier on device. */
@@ -725,12 +835,15 @@ class AgentRunner(
         val routine: RoutineRun?,
         val serviceLost: Boolean,
         val failureCode: String?,
+        val taskId: String,
+        val prompt: String,
     )
 
     /** The end of a run: touches back, the reply stored, usage and tips recorded, and the user told. */
     private suspend fun endRun(e: EndOfRun, runJob: Job) {
         steering = null
         steps = null
+        recordTerminalCheckpoint(e)
         // Touches come back first, before any storage work.
         e.overlay.releaseTouches()
         endProgress(e.progress)
@@ -790,9 +903,7 @@ class AgentRunner(
         // Finish any open dictation before bringing another activity forward or reading the reply aloud.
         val last = e.overlay.release(if (e.cancelled || shouldReturn) 0 else RESULT_LINGER_MS, runJob)
         if (id != null && answer != null && !e.cancelled && e.source != Source.ROUTINE) {
-            guarded("read aloud") {
-                if (settings.readAloud.first()) ReadAloud.speak(context, answer, settings.voiceLanguage.first().tag)
-            }
+            guarded("read aloud") { readReplyAloud(answer) }
         }
         var returned = false
         if (id != null && shouldReturn) {
@@ -825,6 +936,102 @@ class AgentRunner(
             // Not after the user's own Stop: they know, and a "Stopped" notification is noise.
             notifyResult(id, e.runTitle, summary, usageLimit)
         }
+        taskLogs.append(e.taskId, "Run ended: ${e.outcome.name}")
+    }
+
+    private suspend fun readReplyAloud(answer: String) {
+        if (!settings.readAloud.first()) return
+        val lang = settings.voiceLanguage.first().tag
+        val speed = settings.nvidiaTtsSpeed.first()
+        val gender = settings.nvidiaVoiceGender.first()
+        val continuous = settings.nvidiaContinuousVoice.first()
+        com.phoneuse.voice.VoiceSessionManager.shared.setContinuousMode(continuous)
+        com.phoneuse.voice.VoiceSessionManager.shared.onReplySpeaking(true)
+        ReadAloud.speak(
+            context = context,
+            text = answer,
+            language = lang,
+            speed = speed,
+            gender = gender,
+            onDone = { com.phoneuse.voice.VoiceSessionManager.shared.onSpeechCompleted() },
+        )
+    }
+
+    private fun watchOverlayMeta(st: RunState, overlay: OverlaySession): Job = scope.launch {
+        combine(
+            NvidiaOrchestrator.activeStatus,
+            taskQueue.paused,
+            taskQueue.queuedTasks,
+        ) { status, pausedNow, queued ->
+            Triple(status, pausedNow, queued.size)
+        }.collect { (status, pausedNow, queuedCount) ->
+            overlay.setStatus(status.role.displayName, status.modelId, pausedNow, queuedCount)
+            if (status.reason.isNotBlank() && st.taskId.isNotBlank()) {
+                taskLogs.append(st.taskId, "${status.role.displayName}: ${status.reason}")
+            }
+        }
+    }
+
+    private fun recordEventProgress(st: RunState, event: AgentEvent) {
+        val tid = st.taskId
+        if (tid.isBlank()) return
+        val status = NvidiaOrchestrator.activeStatus.value
+        when (event) {
+            is AgentEvent.Acting -> {
+                activeStepCount++
+                taskLogs.append(tid, "Step $activeStepCount: ${event.description}")
+                checkpoints.save(
+                    TaskCheckpoint(
+                        taskId = tid,
+                        conversationId = st.conversation ?: 0L,
+                        prompt = st.prompt,
+                        status = if (taskQueue.paused.value) TaskRunStatus.PAUSED else TaskRunStatus.RUNNING,
+                        stepCount = activeStepCount,
+                        activeRole = status.role.displayName,
+                        activeModel = status.modelId,
+                    ),
+                )
+            }
+            AgentEvent.Thinking -> {
+                checkpoints.save(
+                    TaskCheckpoint(
+                        taskId = tid,
+                        conversationId = st.conversation ?: 0L,
+                        prompt = st.prompt,
+                        status = if (taskQueue.paused.value) TaskRunStatus.PAUSED else TaskRunStatus.RUNNING,
+                        stepCount = activeStepCount,
+                        activeRole = status.role.displayName,
+                        activeModel = status.modelId,
+                    ),
+                )
+            }
+            is AgentEvent.Log -> taskLogs.append(tid, event.text)
+            is AgentEvent.Failed -> taskLogs.append(tid, "Failed: ${event.message}", level = "ERROR")
+            else -> Unit
+        }
+    }
+
+    private fun recordTerminalCheckpoint(e: EndOfRun) {
+        if (e.taskId.isBlank()) return
+        val status = NvidiaOrchestrator.activeStatus.value
+        val terminal = when (e.outcome) {
+            RunOutcome.FINISHED -> TaskRunStatus.COMPLETED
+            RunOutcome.CANCELLED -> TaskRunStatus.CANCELLED
+            RunOutcome.SERVICE_LOST -> TaskRunStatus.INTERRUPTED
+            RunOutcome.FAILED -> TaskRunStatus.FAILED
+        }
+        checkpoints.save(
+            TaskCheckpoint(
+                taskId = e.taskId,
+                conversationId = e.conversation ?: 0L,
+                prompt = e.prompt,
+                status = terminal,
+                stepCount = activeStepCount,
+                activeRole = status.role.displayName,
+                activeModel = status.modelId,
+                lastError = if (terminal == TaskRunStatus.FAILED || terminal == TaskRunStatus.INTERRUPTED) e.reply else null,
+            ),
+        )
     }
 
     /** A run on the plan went through, so the limit isn't in the way: automatic requests may go again ([PlanPause]). */

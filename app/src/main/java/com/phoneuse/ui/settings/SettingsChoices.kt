@@ -17,7 +17,13 @@ val ASSIST_LABELS get() = listOf(AssistAction.SUGGEST to tr("Ideas for this scre
 val SPEED_LABELS get() = listOf(ControlSpeed.FAST to tr("Fast", "빠르게"), ControlSpeed.NORMAL to tr("Normal", "보통"), ControlSpeed.SLOW to tr("Slow", "천천히"))
 val FONT_LABELS get() = listOf(FontSize.DEFAULT to tr("Default", "기본"), FontSize.LARGE to tr("Large", "크게"), FontSize.LARGEST to tr("Largest", "아주 크게"))
 val UNFOLDED_LABELS get() = listOf(UnfoldedLayout.SIDE_BY_SIDE to tr("Chat + result side by side", "대화 + 결과 나란히"), UnfoldedLayout.CHAT_ONLY to tr("Chat only", "대화만"))
-val VOICE_LABELS get() = listOf(VoiceLanguage.KOREAN to "한국어", VoiceLanguage.ENGLISH to "English", VoiceLanguage.SYSTEM to tr("Device language", "기기 언어"))
+val VOICE_LABELS get() = listOf(
+    VoiceLanguage.KOREAN to "한국어",
+    VoiceLanguage.ENGLISH to "English",
+    VoiceLanguage.HINDI to "हिन्दी (Hindi)",
+    VoiceLanguage.HINGLISH to "Hinglish",
+    VoiceLanguage.SYSTEM to tr("Device language", "기기 언어"),
+)
 val SCREEN_LABELS get() = listOf(ScreenContent.ALL to tr("Everything", "전부"), ScreenContent.TEXT_ONLY to tr("Text only", "글자만"))
 
 /** "오늘 요약 받기" times (minutes of the day); -1 = off. */

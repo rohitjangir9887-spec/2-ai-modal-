@@ -136,6 +136,8 @@ class AgentLoop(
     private val inputBudgetChars: Int = INPUT_BUDGET_CHARS,
     /** Jitter for retry waits (tests pass a seeded one). */
     private val random: kotlin.random.Random = kotlin.random.Random.Default,
+    /** Suspends while the run is paused by the user before beginning the next step. */
+    private val awaitIfPaused: (suspend () -> Unit)? = null,
 ) {
     private val helper = helperModel?.let { Helper(it, executor) }
 
@@ -292,6 +294,7 @@ class AgentLoop(
         var watch: ScreenWatch? = null
         var overflowRetried = false
         while (true) {
+            awaitIfPaused?.invoke()
             addSteering(input)
             if (step >= maxSteps) throw Fail(tr("Step limit exceeded", "단계 한도 초과"))
             step++

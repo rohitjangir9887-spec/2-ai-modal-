@@ -36,6 +36,7 @@ fun modelDisplayName(id: String): String {
 fun modelChipName(id: String): String {
     val display = modelDisplayName(id)
     if (display.startsWith("Claude ")) return display.removePrefix("Claude ")
+    if (display.startsWith("nvidia/")) return display.removePrefix("nvidia/")
     if (!display.startsWith("GPT-")) return display
     val space = display.indexOf(' ')
     return if (space < 0) display else display.substring(space + 1)

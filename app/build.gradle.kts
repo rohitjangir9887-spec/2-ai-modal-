@@ -32,6 +32,12 @@ android {
         ).forEach { (key, env) -> System.getenv(env)?.takeIf { it.isNotEmpty() }?.let { setProperty(key, it) } }
     }
     signingConfigs {
+        create("debugConfig") {
+            storeFile = file("${rootDir}/debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
         if (releaseKeys.isNotEmpty()) create("release") {
             storeFile = file(releaseKeys.getProperty("storeFile"))
             storePassword = releaseKeys.getProperty("storePassword")
@@ -40,6 +46,9 @@ android {
         }
     }
     buildTypes {
+        debug {
+            signingConfig = signingConfigs.getByName("debugConfig")
+        }
         release {
             isMinifyEnabled = true
             isShrinkResources = true

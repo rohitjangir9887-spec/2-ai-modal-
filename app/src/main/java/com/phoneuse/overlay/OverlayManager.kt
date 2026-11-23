@@ -24,6 +24,7 @@ import androidx.lifecycle.setViewTreeLifecycleOwner
 import androidx.lifecycle.setViewTreeViewModelStoreOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import com.phoneuse.app.AppGraph
+import com.phoneuse.app.NvidiaOrchestrator
 import com.phoneuse.app.ThemeMode
 import com.phoneuse.assist.AssistVoiceActivity
 import com.phoneuse.assist.VoiceBridge
@@ -56,6 +57,8 @@ class OverlayManager(private val service: PhoneUseAccessibilityService) : Overla
 
     var onStop: () -> Unit = {}
     var onSteer: (String) -> Boolean = { false }
+    var onPauseToggle: () -> Unit = {}
+    var onQueueTask: (String) -> Boolean = { false }
     override var onCardResult: (id: Long, result: String) -> Boolean = { _, _ -> false }
     override var onClosed: () -> Unit = {}
 
@@ -132,8 +135,13 @@ class OverlayManager(private val service: PhoneUseAccessibilityService) : Overla
         val borderView = composeView {
             val s by state.collectAsState()
             val marks by touches.collectAsState()
+            val cursor by pointerCursor.collectAsState()
             BorderGlow(s.phase)
-            TouchMarks(marks)
+            TouchPointerOverlay(
+                pointer = if (NvidiaOrchestrator.pointerEnabled) cursor else null,
+                marks = if (NvidiaOrchestrator.pointerEnabled) marks else emptyList(),
+                showLabels = NvidiaOrchestrator.pointerLabels,
+            )
         }
         wm.addView(borderView, gp)
         border = borderView
@@ -164,10 +172,14 @@ class OverlayManager(private val service: PhoneUseAccessibilityService) : Overla
                 onDraftChange = { draft.value = it },
                 focusClears = clears,
                 onStop = { onStop() },
+                onPauseToggle = { onPauseToggle() },
                 onSubmit = { card ->
                     shown && !closing && card == state.value.card && draft.submit { text ->
                         submitDockText(card, text, onCardResult, onSteer)
                     }
+                },
+                onQueueSubmit = { card ->
+                    shown && !closing && card == null && draft.submit { text -> onQueueTask(text) }
                 },
                 onCardResult = { id, result -> onCardResult(id, result) },
                 onInputFocus = { setInputFocusable(it) },
@@ -204,6 +216,8 @@ class OverlayManager(private val service: PhoneUseAccessibilityService) : Overla
         inputFocusable = false
         voiceRequest?.let(VoiceBridge::interrupt)
         voiceRequest = null
+        pointerCursor.value = null
+        touches.value = emptyList()
         panelDraft?.close()
         panelDraft = null
         handoffId = null
@@ -340,16 +354,52 @@ class OverlayManager(private val service: PhoneUseAccessibilityService) : Overla
         }
     }
 
-    /** Touch marks the border layer draws (see [TouchMarks]); each removes itself after [TOUCH_MARK_MS]. */
+    /** Touch marks and live cursor drawn on the border layer (see [TouchPointerOverlay]). */
     val touches = MutableStateFlow<List<TouchMark>>(emptyList())
+    val pointerCursor = MutableStateFlow<PointerCursorState?>(null)
     private var touchIds = 0L
 
-    override fun showTouch(x: Int, y: Int, x2: Int?, y2: Int?, long: Boolean) {
+    private fun clampPoint(x: Int, y: Int): PointerGeometry.Point {
+        val b = wm.currentWindowMetrics.bounds
+        return PointerGeometry.clamp(x, y, b.width(), b.height())
+    }
+
+    override fun showPointerMove(x: Int, y: Int, label: String?) {
         onMain {
-            if (!shown) return@onMain
-            val mark = TouchMark(++touchIds, x, y, x2, y2, long)
+            if (!shown || !NvidiaOrchestrator.pointerEnabled) return@onMain
+            val pt = clampPoint(x, y)
+            pointerCursor.value = PointerCursorState(pt.x, pt.y, label = label, visible = true)
+        }
+    }
+
+    override fun showTouch(x: Int, y: Int, x2: Int?, y2: Int?, long: Boolean) {
+        showTouchOutcome(x, y, x2, y2, long = long, success = true, label = null)
+    }
+
+    override fun showTouchOutcome(
+        x: Int,
+        y: Int,
+        x2: Int?,
+        y2: Int?,
+        long: Boolean,
+        success: Boolean,
+        label: String?,
+    ) {
+        onMain {
+            if (!shown || !NvidiaOrchestrator.pointerEnabled) return@onMain
+            val start = clampPoint(x, y)
+            val end = if (x2 != null && y2 != null) clampPoint(x2, y2) else null
+            pointerCursor.value = PointerCursorState(start.x, start.y, label = label, visible = true)
+            val mark = TouchMark(++touchIds, start.x, start.y, end?.x, end?.y, long, success = success, label = label)
             touches.value = touches.value + mark
-            main.postDelayed({ touches.value = touches.value - mark }, TOUCH_MARK_MS + if (long) 300 else 0)
+            val ttl = TOUCH_MARK_MS + if (long) 300 else 0
+            main.postDelayed({
+                touches.value = touches.value - mark
+                val cur = pointerCursor.value
+                if (cur != null && cur.x == start.x && cur.y == start.y) {
+                    pointerCursor.value = null
+                }
+            }, ttl)
         }
     }
 
@@ -482,7 +532,7 @@ class OverlayManager(private val service: PhoneUseAccessibilityService) : Overla
         if (!shown) return
         blocker?.let { v ->
             val p = blockerParams ?: return@let
-            val touchable = blocking && passDepth == 0 && !listening
+            val touchable = blocking && !state.value.paused && passDepth == 0 && !listening
             p.flags = withFlag(p.flags, WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE, !touchable)
             update(v, p)
         }

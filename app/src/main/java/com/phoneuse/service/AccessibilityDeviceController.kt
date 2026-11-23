@@ -286,13 +286,17 @@ class AccessibilityDeviceController(
         }
 
     override suspend fun tap(x: Int, y: Int): Boolean {
-        overlay?.showTouch(x, y)
-        return passThrough(x, y) { dispatch(point(x, y, TAP_MS), TAP_MS) }
+        overlay?.showPointerMove(x, y, "Tap")
+        val ok = passThrough(x, y) { dispatch(point(x, y, TAP_MS), TAP_MS) }
+        overlay?.showTouchOutcome(x, y, success = ok, label = "Tap")
+        return ok
     }
 
     override suspend fun longPress(x: Int, y: Int): Boolean {
-        overlay?.showTouch(x, y, long = true)
-        return passThrough(x, y) { dispatch(point(x, y, LONG_PRESS_MS), LONG_PRESS_MS) }
+        overlay?.showPointerMove(x, y, "Long press")
+        val ok = passThrough(x, y) { dispatch(point(x, y, LONG_PRESS_MS), LONG_PRESS_MS) }
+        overlay?.showTouchOutcome(x, y, long = true, success = ok, label = "Long press")
+        return ok
     }
 
     override suspend fun click(node: UiNode, long: Boolean): Boolean {
@@ -303,8 +307,11 @@ class AccessibilityDeviceController(
             val n = cur ?: return false
             if (n.isEnabled && (if (long) n.isLongClickable else n.isClickable)) {
                 if (!n.isVisibleToUser) return false
-                overlay?.showTouch(node.bounds.centerX, node.bounds.centerY, long = long)
-                return n.performAction(action)
+                val label = if (long) "Long press" else "Tap"
+                overlay?.showPointerMove(node.bounds.centerX, node.bounds.centerY, label)
+                val ok = n.performAction(action)
+                overlay?.showTouchOutcome(node.bounds.centerX, node.bounds.centerY, long = long, success = ok, label = label)
+                return ok
             }
             cur = n.parent
         }
@@ -313,16 +320,20 @@ class AccessibilityDeviceController(
 
     override suspend fun swipe(x1: Int, y1: Int, x2: Int, y2: Int, durationMs: Long): Boolean {
         val g = keepOffEdges(service(), EdgeGuard.Stroke(x1, y1, x2, y2))
-        overlay?.showTouch(g.x1, g.y1, g.x2, g.y2)
-        return passThrough(g.x1, g.y1) { dispatch(line(g.x1, g.y1, g.x2, g.y2, durationMs), durationMs) }
+        overlay?.showPointerMove(g.x1, g.y1, "Swipe")
+        val ok = passThrough(g.x1, g.y1) { dispatch(line(g.x1, g.y1, g.x2, g.y2, durationMs), durationMs) }
+        overlay?.showTouchOutcome(g.x1, g.y1, g.x2, g.y2, success = ok, label = "Swipe")
+        return ok
     }
 
     override suspend fun pinch(x: Int, y: Int, zoomIn: Boolean, durationMs: Long): Boolean {
         val e = edges(service())
         val (a, b) = EdgeGuard.pinch(x, y, zoomIn, e.width, e.height, e.side, e.top, e.bottom)
-        overlay?.showTouch(a.x1, a.y1, a.x2, a.y2)
-        overlay?.showTouch(b.x1, b.y1, b.x2, b.y2)
-        return dispatchPair(path(a), path(b), listOf(a.x1 to a.y1, b.x1 to b.y1), durationMs)
+        overlay?.showPointerMove(x, y, if (zoomIn) "Zoom in" else "Zoom out")
+        val ok = dispatchPair(path(a), path(b), listOf(a.x1 to a.y1, b.x1 to b.y1), durationMs)
+        overlay?.showTouchOutcome(a.x1, a.y1, a.x2, a.y2, success = ok, label = "Pinch")
+        overlay?.showTouchOutcome(b.x1, b.y1, b.x2, b.y2, success = ok)
+        return ok
     }
 
     override fun planRotate(x: Int, y: Int, degrees: Int, spreadPx: Int?) = edges(service()).rotate(x, y, degrees, spreadPx)
@@ -349,8 +360,10 @@ class AccessibilityDeviceController(
                 track(-plan.halfSpacing) to track(plan.halfSpacing)
             }
         }
-        for ((x, y) in plan.starts) overlay?.showTouch(x, y)
-        return dispatchPair(paths.first, paths.second, plan.starts, durationMs)
+        plan.starts.firstOrNull()?.let { (sx, sy) -> overlay?.showPointerMove(sx, sy, "Gesture") }
+        val ok = dispatchPair(paths.first, paths.second, plan.starts, durationMs)
+        for ((x, y) in plan.starts) overlay?.showTouchOutcome(x, y, success = ok)
+        return ok
     }
 
     private suspend fun dispatchPair(first: Path, second: Path, starts: List<Pair<Int, Int>>, durationMs: Long): Boolean {

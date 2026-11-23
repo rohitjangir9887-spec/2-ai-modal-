@@ -675,14 +675,35 @@ class ToolExecutor(
         if (seen.packageName != now.packageName) return null
         val node = seen.elements.getValue(index)
         val kind = kind(index, seen)
-        if (kind.second.isNullOrBlank()) return null
-        if (seen.elements.keys.count { kind(it, seen) == kind } != 1) return null
-        val moved = now.elements.keys.singleOrNull { kind(it, now) == kind } ?: return null
+        val vid = node.viewId?.takeIf { it.isNotBlank() }
+
+        val relocatedByKind = if (!kind.second.isNullOrBlank() && seen.elements.keys.count { kind(it, seen) == kind } == 1) {
+            now.elements.keys.singleOrNull { kind(it, now) == kind }
+        } else {
+            null
+        }
+        val relocatedByViewId = if (relocatedByKind == null && vid != null) {
+            val wantKey = Triple(vid, node.className, kind.second)
+            if (seen.elements.keys.count { idKey(it, seen) == wantKey } == 1) {
+                now.elements.keys.singleOrNull { idKey(it, now) == wantKey }
+            } else {
+                null
+            }
+        } else {
+            null
+        }
+        val moved = relocatedByKind ?: relocatedByViewId ?: return null
         val b = now.elements.getValue(moved).bounds
-        val sameSize = b.right - b.left == node.bounds.right - node.bounds.left &&
-            b.bottom - b.top == node.bounds.bottom - node.bounds.top
+        val dw = kotlin.math.abs((b.right - b.left) - (node.bounds.right - node.bounds.left))
+        val dh = kotlin.math.abs((b.bottom - b.top) - (node.bounds.bottom - node.bounds.top))
+        val sameSize = dw <= 8 && dh <= 8
         val visible = !b.isEmpty && b.right > 0 && b.bottom > 0 && b.left < now.displayWidth && b.top < now.displayHeight
         return moved.takeIf { sameSize && visible }
+    }
+
+    private fun idKey(index: Int, screen: CompressedScreen): Triple<String?, String?, String?> {
+        val n = screen.elements[index]
+        return Triple(n?.viewId, n?.className, screen.fullLabels[index])
     }
 
     private data class Identity(val packageName: String?, val className: String?, val label: String?, val bounds: Bounds)

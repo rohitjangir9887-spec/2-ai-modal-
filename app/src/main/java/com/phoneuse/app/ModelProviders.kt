@@ -5,20 +5,26 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import com.phoneuse.i18n.tr
 import com.phoneuse.model.ChatCompletionsClient
 import com.phoneuse.model.ClaudeClient
+import com.phoneuse.model.NvidiaModelRegistry
+import com.phoneuse.model.NvidiaNimClient
 
 /** What each [AuthMode] (the model provider) brings: where its key and chosen model are kept, its model ids. */
 object ModelProviders {
     const val KEY_CLAUDE = "claude_api_key"
     const val KEY_XAI = "xai_api_key"
     const val KEY_GEMINI = "gemini_api_key"
+    const val KEY_NVIDIA = "nvidia_api_key"
     const val KEY_COMPATIBLE = "compatible_api_key"
 
     /** Fallbacks until the user picks from the provider's own list. */
     const val GROK_DEFAULT = "grok-4"
     const val GEMINI_DEFAULT = "gemini-flash-latest"
+    const val NVIDIA_DEFAULT = NvidiaModelRegistry.PHONE_PRIMARY
+    const val NVIDIA_LIGHT = NvidiaModelRegistry.FAST_PRIMARY
 
     const val XAI_BASE_URL = "https://api.x.ai/v1/"
     const val GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
+    const val NVIDIA_BASE_URL = NvidiaNimClient.DEFAULT_BASE_URL
 
     /** The Chat Completions backend of Grok and Gemini; null for the others. */
     fun endpoint(mode: AuthMode): ChatCompletionsClient.Endpoint? = when (mode) {
@@ -38,6 +44,7 @@ object ModelProviders {
         AuthMode.CLAUDE -> KEY_CLAUDE
         AuthMode.GROK -> KEY_XAI
         AuthMode.GEMINI -> KEY_GEMINI
+        AuthMode.NVIDIA -> KEY_NVIDIA
         AuthMode.COMPATIBLE -> KEY_COMPATIBLE
     }
 
@@ -47,6 +54,7 @@ object ModelProviders {
         AuthMode.CLAUDE -> MODEL_CLAUDE
         AuthMode.GROK -> MODEL_GROK
         AuthMode.GEMINI -> MODEL_GEMINI
+        AuthMode.NVIDIA -> MODEL_NVIDIA
         AuthMode.COMPATIBLE -> MODEL_COMPATIBLE
     }
 
@@ -55,6 +63,7 @@ object ModelProviders {
         AuthMode.CLAUDE -> ClaudeClient.DEFAULT_MODEL
         AuthMode.GROK -> GROK_DEFAULT
         AuthMode.GEMINI -> GEMINI_DEFAULT
+        AuthMode.NVIDIA -> NVIDIA_DEFAULT
         // No id fits every server: the one model a server lists, or the one the user picks (see [upgrades]).
         AuthMode.COMPATIBLE -> ""
     }
@@ -67,6 +76,7 @@ object ModelProviders {
     fun lightModel(mode: AuthMode): String? = when (mode) {
         AuthMode.CHATGPT, AuthMode.API_KEY -> SettingsStore.ROUTINE_LIGHT_MODEL
         AuthMode.CLAUDE -> ClaudeClient.LIGHT_MODEL
+        AuthMode.NVIDIA -> NVIDIA_LIGHT
         AuthMode.GROK, AuthMode.GEMINI, AuthMode.COMPATIBLE -> null
     }
 
@@ -75,15 +85,18 @@ object ModelProviders {
         lightModel(mode)?.let { prefs[autoLightPref(mode)]?.takeIf { id -> id.isNotBlank() } ?: it }
 
     /** The newest default and light model [listed] holds for [mode]; null where nothing is newer than the built-in. */
-    fun upgrades(mode: AuthMode, listed: List<String>): Pair<String?, String?> =
+    fun upgrades(mode: AuthMode, listed: List<String>): Pair<String?, String?> = when (mode) {
         // A server listing a single model (a local Ollama or LM Studio with one loaded) needs no picking.
-        if (mode == AuthMode.COMPATIBLE) listed.singleOrNull() to null
-        else ModelUpgrade.newest(defaultModel(mode), listed) to lightModel(mode)?.let { ModelUpgrade.newest(it, listed) }
+        AuthMode.COMPATIBLE -> listed.singleOrNull() to null
+        AuthMode.NVIDIA -> null to null
+        else -> ModelUpgrade.newest(defaultModel(mode), listed) to lightModel(mode)?.let { ModelUpgrade.newest(it, listed) }
+    }
 
     /** Ids offered before (and beside) the provider's own list. */
     fun presets(mode: AuthMode): List<String> = when (mode) {
         AuthMode.CHATGPT, AuthMode.API_KEY -> MODEL_PRESETS
         AuthMode.CLAUDE -> ClaudeClient.MODELS
+        AuthMode.NVIDIA -> NvidiaModelRegistry.PRESET_IDS
         AuthMode.GROK, AuthMode.GEMINI, AuthMode.COMPATIBLE -> emptyList()
     }
 
@@ -104,6 +117,7 @@ object ModelProviders {
         AuthMode.CLAUDE -> "sk-ant-…"
         AuthMode.GROK -> "xai-…"
         AuthMode.GEMINI -> "AIza…"
+        AuthMode.NVIDIA -> "nvapi-…"
         else -> "sk-…"
     }
 
@@ -113,6 +127,7 @@ object ModelProviders {
         AuthMode.CLAUDE -> "Claude"
         AuthMode.GROK -> "Grok"
         AuthMode.GEMINI -> "Gemini"
+        AuthMode.NVIDIA -> "NVIDIA NIM"
         AuthMode.COMPATIBLE -> tr("OpenAI-compatible", "OpenAI 호환")
     }
 
@@ -126,6 +141,7 @@ object ModelProviders {
             when (mode) {
                 AuthMode.CLAUDE -> ClaudeClient.listModels(ClaudeClient.sdkClient(apiKey))
                 AuthMode.GROK, AuthMode.GEMINI -> ChatCompletionsClient.listModels(endpoint(mode)!!, apiKey, http).filter(::chatCapable)
+                AuthMode.NVIDIA -> NvidiaNimClient.listModels(apiKey, http, NVIDIA_BASE_URL).filter(::chatCapable)
                 AuthMode.COMPATIBLE -> ChatCompletionsClient.listModels(compatibleEndpoint(baseUrl), apiKey, http).filter(::chatCapable)
                 // [apiKey] is the plan sign-in's access token: the account's own catalog, in the server's order.
                 AuthMode.CHATGPT -> com.phoneuse.auth.PlanModels.list(http, apiKey)
@@ -155,6 +171,7 @@ object ModelProviders {
     private val MODEL_CLAUDE = stringPreferencesKey("model_claude")
     private val MODEL_GROK = stringPreferencesKey("model_grok")
     private val MODEL_GEMINI = stringPreferencesKey("model_gemini")
+    private val MODEL_NVIDIA = stringPreferencesKey("model_nvidia")
     private val MODEL_COMPATIBLE = stringPreferencesKey("model_compatible")
 
     /** Where the newer default and light model found in [mode]'s own list are kept. */

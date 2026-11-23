@@ -7,6 +7,8 @@ import com.phoneuse.model.ClaudeClient
 import com.phoneuse.model.ModelAuth
 import com.phoneuse.model.ModelClient
 import com.phoneuse.model.ModelOptions
+import com.phoneuse.model.NimRequestConfig
+import com.phoneuse.model.NvidiaNimClient
 import com.phoneuse.model.OpenAiResponsesClient
 import kotlinx.coroutines.flow.first
 import okhttp3.OkHttpClient
@@ -44,6 +46,34 @@ sealed interface ModelBackend {
         override fun client(options: ModelOptions, http: OkHttpClient): ModelClient =
             ChatCompletionsClient(endpoint, apiKey, options.copy(fast = false, webSearch = false), http)
     }
+
+    class Nvidia(
+        private val apiKey: String,
+        private val autoOrchestration: Boolean,
+        private val requestConfig: NimRequestConfig,
+        private val orchestrator: NvidiaOrchestrator = NvidiaOrchestrator,
+        override val lightModel: String? = ModelProviders.lightModel(AuthMode.NVIDIA),
+    ) : ModelBackend {
+        override val mode get() = AuthMode.NVIDIA
+
+        override fun client(options: ModelOptions, http: OkHttpClient): ModelClient =
+            orchestrator.createClient(
+                apiKey = apiKey,
+                options = options.copy(fast = false, webSearch = false),
+                http = http,
+                autoOrchestration = autoOrchestration,
+                requestConfig = requestConfig,
+            )
+
+        fun singleModelClient(options: ModelOptions, http: OkHttpClient): ModelClient =
+            NvidiaNimClient(
+                apiKey = apiKey,
+                options = options.copy(fast = false, webSearch = false),
+                http = http,
+                config = requestConfig,
+                registry = orchestrator.registry,
+            )
+    }
 }
 
 /**
@@ -56,6 +86,20 @@ internal suspend fun SettingsStore.chosenBackend(planAuth: ModelAuth): ModelBack
     AuthMode.CLAUDE -> providerKey(mode).first().takeIf { it.isNotBlank() }?.let { ModelBackend.Claude(it, lightModel.first()) }
     AuthMode.GROK, AuthMode.GEMINI -> providerKey(mode).first().takeIf { it.isNotBlank() }?.let { key ->
         ModelBackend.Chat(mode, ModelProviders.endpoint(mode)!!, key)
+    }
+    AuthMode.NVIDIA -> providerKey(mode).first().takeIf { it.isNotBlank() }?.let { key ->
+        NvidiaOrchestrator.syncFromSettings(this)
+        val config = NimRequestConfig(
+            streaming = nvidiaStreamingEnabled.first(),
+            timeoutSeconds = nvidiaRequestTimeoutSec.first(),
+            visionEnabled = nvidiaVisionEnabled.first() && screenContent.first() == ScreenContent.ALL,
+        )
+        ModelBackend.Nvidia(
+            apiKey = key,
+            autoOrchestration = nvidiaAutoOrchestration.first(),
+            requestConfig = config,
+            lightModel = lightModel.first(),
+        )
     }
     // A local server may take no key; a server and a model are what it needs.
     AuthMode.COMPATIBLE -> compatibleBaseUrl.first().takeIf { it.isNotBlank() && model.first().isNotBlank() }?.let { base ->

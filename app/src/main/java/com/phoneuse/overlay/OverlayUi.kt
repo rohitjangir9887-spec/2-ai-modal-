@@ -87,7 +87,10 @@ import com.phoneuse.ui.theme.SendCircle
 import com.phoneuse.ui.theme.pu
 import kotlinx.coroutines.delay
 
-/** The agent-activity blue stays the same in light and dark (OverlayRunning board). */
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.platform.testTag
+
 private val GlowEdge = Color(0xFFE4572E)
 private val GlowSoft = Color(0xFFF08A66)
 private val Halo = Color(0xFFE4572E)
@@ -164,6 +167,8 @@ fun DockContent(
     onVoice: () -> Unit = {},
     onMoveHandoff: () -> Unit = {},
     handoffSize: IntSize? = null,
+    onPauseToggle: () -> Unit = {},
+    onQueueSubmit: (DockCard?) -> Boolean = { false },
 ) {
     val card = state.card
     if (card is DockCard.HandOff) {
@@ -179,6 +184,8 @@ fun DockContent(
 
     var wantKeyboard by remember { mutableStateOf(false) }
     var sendRefused by remember(draft.text) { mutableStateOf(false) }
+    var queueMode by remember { mutableStateOf(false) }
+    var logsExpanded by remember { mutableStateOf(false) }
     val focusManager = LocalFocusManager.current
     val keyboard = LocalSoftwareKeyboardController.current
 
@@ -203,14 +210,16 @@ fun DockContent(
         imeWasVisible = imeVisible
     }
 
-    // Text typed while a question card is open answers that card (with its id); otherwise it steers.
+    // Text typed while a question card is open answers that card (with its id); otherwise it steers or queues.
     fun send() {
         if (draft.text.isBlank()) return
-        if (!onSubmit(state.card)) {
+        val sent = if (queueMode && card == null) onQueueSubmit(card) else onSubmit(state.card)
+        if (!sent) {
             sendRefused = true
             return
         }
         sendRefused = false
+        queueMode = false
         focusManager.clearFocus()
     }
 
@@ -258,16 +267,46 @@ fun DockContent(
                 )
             }
             if (card == null) {
-                StatusHeader(state.phase, onStop)
-                LogLines(state)
-                input(tr("Add instruction…", "지시 추가…"), false)
+                StatusHeader(
+                    state = state,
+                    expanded = logsExpanded,
+                    onToggleLogs = { logsExpanded = !logsExpanded },
+                    onPauseToggle = onPauseToggle,
+                    onStop = onStop,
+                )
+                LogLines(state, expanded = logsExpanded)
+                val placeholder = if (queueMode) {
+                    tr("Queue next task…", "다음 작업 대기열에 추가…")
+                } else {
+                    tr("Add instruction…", "지시 추가…")
+                }
+                input(placeholder, false)
                 Row(
-                    Modifier.align(Alignment.CenterHorizontally),
+                    Modifier.fillMaxWidth().padding(horizontal = 4.dp),
                     verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
                 ) {
-                    Icon(PuIcons.Lock, null, tint = c.textSub, modifier = Modifier.size(12.dp))
-                    Spacer(Modifier.width(4.dp))
-                    Text(tr("Screen touch is locked while I work", "작업 중에는 화면 터치가 잠겨요"), fontSize = 11.5.sp, color = c.textSub)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(PuIcons.Lock, null, tint = c.textSub, modifier = Modifier.size(12.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text(
+                            if (state.paused) tr("Paused · Screen unlocked", "일시중지됨 · 화면 잠금 해제")
+                            else tr("Screen touch is locked while I work", "작업 중에는 화면 터치가 잠겨요"),
+                            fontSize = 11.5.sp,
+                            color = c.textSub,
+                        )
+                    }
+                    Text(
+                        if (queueMode) tr("Steer instead", "현재 작업 지시") else tr("+ Queue next", "+ 다음 작업 예약"),
+                        Modifier
+                            .testTag("overlay_queue_toggle")
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable(role = Role.Button) { queueMode = !queueMode }
+                            .padding(horizontal = 6.dp, vertical = 2.dp),
+                        fontSize = 11.5.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = if (queueMode) c.accentText else c.textSub,
+                    )
                 }
             } else {
                 CardBody(card) { result -> onCardResult(card.id, result) }
@@ -285,36 +324,113 @@ fun DockContent(
 }
 
 @Composable
-private fun StatusHeader(phase: AgentPhase, onStop: () -> Unit) {
+private fun StatusHeader(
+    state: AgentUiState,
+    expanded: Boolean,
+    onToggleLogs: () -> Unit,
+    onPauseToggle: () -> Unit,
+    onStop: () -> Unit,
+) {
     val c = pu
-    val live = phase == AgentPhase.THINKING || phase == AgentPhase.ACTING
-    Row(Modifier.padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-        StatusDot(live)
-        Spacer(Modifier.width(10.dp))
-        Text(
-            when (phase) {
-                AgentPhase.THINKING -> tr("Thinking", "생각 중")
-                AgentPhase.ACTING -> tr("Operating the phone", "폰 조작 중")
-                AgentPhase.WAITING_USER -> tr("Waiting for your answer", "답을 기다리는 중")
-                AgentPhase.IDLE -> tr("Wrapping up", "정리 중")
-            },
-            Modifier.weight(1f),
-            fontSize = 14.5.sp,
-            fontWeight = FontWeight.Medium,
-            color = c.text,
-        )
-        Row(
-            Modifier
-                .height(36.dp)
-                .clip(RoundedCornerShape(18.dp))
-                .background(c.dangerSoft)
-                .clickable(role = Role.Button, onClick = onStop)
-                .padding(start = 12.dp, end = 14.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Box(Modifier.size(10.dp).clip(RoundedCornerShape(2.dp)).background(c.danger))
-            Spacer(Modifier.width(6.dp))
-            Text(tr("Stop", "중단"), fontSize = 13.5.sp, fontWeight = FontWeight.Bold, color = c.danger)
+    val live = state.phase == AgentPhase.THINKING || state.phase == AgentPhase.ACTING
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Row(Modifier.padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            StatusDot(live)
+            Spacer(Modifier.width(10.dp))
+            Text(
+                when (state.phase) {
+                    AgentPhase.THINKING -> tr("Thinking", "생각 중")
+                    AgentPhase.ACTING -> tr("Operating the phone", "폰 조작 중")
+                    AgentPhase.WAITING_USER -> tr("Waiting for your answer", "답을 기다리는 중")
+                    AgentPhase.PAUSED -> tr("Paused", "일시중지")
+                    AgentPhase.IDLE -> tr("Wrapping up", "정리 중")
+                },
+                Modifier.weight(1f),
+                fontSize = 14.5.sp,
+                fontWeight = FontWeight.Medium,
+                color = c.text,
+            )
+            if (state.allLines.size > 3) {
+                Text(
+                    if (expanded) tr("Less", "접기") else tr("Logs", "로그"),
+                    Modifier
+                        .testTag("overlay_logs_toggle")
+                        .clip(RoundedCornerShape(10.dp))
+                        .clickable(role = Role.Button, onClick = onToggleLogs)
+                        .padding(horizontal = 8.dp, vertical = 6.dp),
+                    fontSize = 12.sp,
+                    color = c.textSub,
+                )
+                Spacer(Modifier.width(4.dp))
+            }
+            if (state.phase != AgentPhase.IDLE) {
+                Row(
+                    Modifier
+                        .testTag("overlay_pause_resume")
+                        .height(36.dp)
+                        .clip(RoundedCornerShape(18.dp))
+                        .background(if (state.paused) c.accentSoft else c.sunken)
+                        .clickable(role = Role.Button, onClick = onPauseToggle)
+                        .padding(horizontal = 11.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        if (state.paused) tr("Resume", "재개") else tr("Pause", "일시중지"),
+                        fontSize = 12.5.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = if (state.paused) c.accentText else c.text2,
+                    )
+                }
+                Spacer(Modifier.width(6.dp))
+            }
+            Row(
+                Modifier
+                    .testTag("overlay_stop_button")
+                    .height(36.dp)
+                    .clip(RoundedCornerShape(18.dp))
+                    .background(c.dangerSoft)
+                    .clickable(role = Role.Button, onClick = onStop)
+                    .padding(start = 12.dp, end = 14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Box(Modifier.size(10.dp).clip(RoundedCornerShape(2.dp)).background(c.danger))
+                Spacer(Modifier.width(6.dp))
+                Text(tr("Stop", "중단"), fontSize = 13.5.sp, fontWeight = FontWeight.Bold, color = c.danger)
+            }
+        }
+        if (state.activeRole.isNotBlank() || state.queuedCount > 0) {
+            Row(
+                Modifier.padding(horizontal = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                if (state.activeRole.isNotBlank()) {
+                    val shortModel = state.activeModel.substringAfterLast('/').take(28)
+                    Text(
+                        if (shortModel.isNotBlank()) "${state.activeRole} · $shortModel" else state.activeRole,
+                        Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(c.sunken)
+                            .padding(horizontal = 7.dp, vertical = 2.dp),
+                        fontSize = 11.sp,
+                        color = c.text2,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                if (state.queuedCount > 0) {
+                    Text(
+                        tr("+${state.queuedCount} queued", "+${state.queuedCount} 대기 중"),
+                        Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(c.accentSoft)
+                            .padding(horizontal = 7.dp, vertical = 2.dp),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = c.accentText,
+                    )
+                }
+            }
         }
     }
 }
@@ -336,18 +452,22 @@ private fun StatusDot(live: Boolean) {
 }
 
 @Composable
-private fun LogLines(state: AgentUiState) {
+private fun LogLines(state: AgentUiState, expanded: Boolean) {
     val c = pu
-    val lines = state.lines.takeLast(3)
+    val lines = if (expanded) state.allLines else state.lines.takeLast(3)
     if (lines.isEmpty()) return
-    Column(Modifier.padding(horizontal = 4.dp)) {
+    Column(
+        Modifier
+            .padding(horizontal = 4.dp)
+            .then(if (expanded) Modifier.height(140.dp).verticalScroll(rememberScrollState()) else Modifier),
+    ) {
         lines.forEachIndexed { i, line ->
             Text(
                 line,
                 fontSize = 13.sp,
                 lineHeight = 19.5.sp,
                 color = if (i == lines.lastIndex) c.text else c.textSub,
-                maxLines = 1,
+                maxLines = if (expanded) 2 else 1,
                 overflow = TextOverflow.Ellipsis,
             )
         }

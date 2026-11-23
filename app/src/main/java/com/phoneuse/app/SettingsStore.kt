@@ -24,7 +24,7 @@ import kotlinx.coroutines.withContext
 private val Context.dataStore by preferencesDataStore(name = "settings")
 
 /** The model provider; [COMPATIBLE] is any OpenAI-compatible server at a base URL (see [CompatibleEndpoints]). */
-enum class AuthMode { CHATGPT, API_KEY, CLAUDE, GROK, GEMINI, COMPATIBLE }
+enum class AuthMode { CHATGPT, API_KEY, CLAUDE, GROK, GEMINI, NVIDIA, COMPATIBLE }
 
 enum class ReasoningEffort { LOW, MEDIUM, HIGH }
 
@@ -46,7 +46,17 @@ enum class UnfoldedLayout { SIDE_BY_SIDE, CHAT_ONLY }
 enum class ScreenContent { ALL, TEXT_ONLY }
 
 /** Settings "음성으로 말하기": the speech recognizer's language; [tag] null = the system's. */
-enum class VoiceLanguage(val tag: String?) { KOREAN("ko-KR"), ENGLISH("en-US"), SYSTEM(null) }
+enum class VoiceLanguage(val tag: String?) {
+    KOREAN("ko-KR"),
+    ENGLISH("en-US"),
+    HINDI("hi-IN"),
+    HINGLISH("en-IN"),
+    SYSTEM(null),
+}
+
+enum class NvidiaVoiceProvider { ANDROID, NVIDIA_AUTO }
+
+enum class NvidiaVoiceGender { NEUTRAL, FEMALE, MALE }
 
 /**
  * Settings "방해하지 않는 시간": minutes of the day; the span may cross midnight (23:00–07:00).
@@ -101,10 +111,10 @@ class SettingsStore internal constructor(
         ModelProviders.routineModel(prefs, modeOf(prefs), light = prefs[ROUTINE_LIGHT] == true)
     }
 
-    /** The API key of [mode] (Claude, Grok, Gemini or OpenAI); empty when none is saved. */
+    /** The API key of [mode] (Claude, Grok, Gemini, NVIDIA or OpenAI); empty when none is saved. */
     fun providerKey(mode: AuthMode): Flow<String> {
         val name = ModelProviders.secretName(mode) ?: return flowOf("")
-        return if (name == KEY_API) apiKey else store.data.map { prefs -> prefs[secretKey(name)]?.let { secrets.open(it) } ?: "" }
+        return if (name == KEY_API) apiKey else store.data.map { prefs -> prefs[secretKey(name)]?.let { openSecret(it) } ?: "" }
     }
 
     /** [AuthMode.COMPATIBLE]'s server, a base URL ending with a slash; empty until one is saved. */
@@ -188,6 +198,29 @@ class SettingsStore internal constructor(
     /** Settings "답 소리 내어 읽기": replies are read aloud when a run ends; off by default. */
     val readAloud: Flow<Boolean> = store.data.map { it[READ_ALOUD] ?: false }
     val screenContent: Flow<ScreenContent> = store.data.map { prefs -> enumOf(prefs[SCREEN_CONTENT], ScreenContent.ALL) }
+
+    val nvidiaAutoOrchestration: Flow<Boolean> = store.data.map { it[NV_AUTO_ORCH] ?: true }
+    val nvidiaVisionEnabled: Flow<Boolean> = store.data.map { it[NV_VISION_ON] ?: true }
+    val nvidiaStreamingEnabled: Flow<Boolean> = store.data.map { it[NV_STREAMING_ON] ?: true }
+    val nvidiaPointerEnabled: Flow<Boolean> = store.data.map { it[NV_POINTER_ON] ?: true }
+    val nvidiaPointerLabels: Flow<Boolean> = store.data.map { it[NV_POINTER_LABELS] ?: true }
+    val nvidiaRequestTimeoutSec: Flow<Int> = store.data.map { (it[NV_TIMEOUT_SEC] ?: 60).coerceIn(15, 180) }
+    val nvidiaMaxRetries: Flow<Int> = store.data.map { (it[NV_MAX_RETRIES] ?: 2).coerceIn(0, 5) }
+    val nvidiaContinuousVoice: Flow<Boolean> = store.data.map { it[NV_VOICE_CONTINUOUS] ?: false }
+    val nvidiaVoiceProvider: Flow<NvidiaVoiceProvider> = store.data.map { enumOf(it[NV_VOICE_PROVIDER], NvidiaVoiceProvider.ANDROID) }
+    val nvidiaVoiceGender: Flow<NvidiaVoiceGender> = store.data.map { enumOf(it[NV_VOICE_GENDER], NvidiaVoiceGender.NEUTRAL) }
+    val nvidiaTtsSpeed: Flow<Float> = store.data.map { (it[NV_TTS_SPEED] ?: 100).coerceIn(75, 150) / 100f }
+    val nvidiaParakeetEndpoint: Flow<String> = store.data.map { it[NV_PARAKEET_URL] ?: "" }
+    val nvidiaMagpieEndpoint: Flow<String> = store.data.map { it[NV_MAGPIE_URL] ?: "" }
+    val nvidiaRoleOverrides: Flow<Map<String, Pair<String, String>>> = store.data.map { prefs ->
+        buildMap {
+            for (role in listOf("MANAGER", "VISION", "PHONE_ACTION", "CODING", "FAST")) {
+                val p = prefs[nvRolePrimaryKey(role)]?.takeIf { it.isNotBlank() }
+                val b = prefs[nvRoleBackupKey(role)]?.takeIf { it.isNotBlank() }
+                if (p != null || b != null) put(role, (p ?: "") to (b ?: ""))
+            }
+        }
+    }
 
     val notificationsAsked: Flow<Boolean> = store.data.map { it[NOTIF_ASKED] ?: false }
 
@@ -401,6 +434,77 @@ class SettingsStore internal constructor(
         store.edit { it[SCREEN_CONTENT] = v.name }
     }
 
+    suspend fun setNvidiaAutoOrchestration(v: Boolean) {
+        store.edit { it[NV_AUTO_ORCH] = v }
+    }
+
+    suspend fun setNvidiaVisionEnabled(v: Boolean) {
+        store.edit { it[NV_VISION_ON] = v }
+    }
+
+    suspend fun setNvidiaStreamingEnabled(v: Boolean) {
+        store.edit { it[NV_STREAMING_ON] = v }
+    }
+
+    suspend fun setNvidiaPointerEnabled(v: Boolean) {
+        store.edit { it[NV_POINTER_ON] = v }
+    }
+
+    suspend fun setNvidiaPointerLabels(v: Boolean) {
+        store.edit { it[NV_POINTER_LABELS] = v }
+    }
+
+    suspend fun setNvidiaRequestTimeoutSec(sec: Int) {
+        store.edit { it[NV_TIMEOUT_SEC] = sec.coerceIn(15, 180) }
+    }
+
+    suspend fun setNvidiaMaxRetries(retries: Int) {
+        store.edit { it[NV_MAX_RETRIES] = retries.coerceIn(0, 5) }
+    }
+
+    suspend fun setNvidiaContinuousVoice(v: Boolean) {
+        store.edit { it[NV_VOICE_CONTINUOUS] = v }
+    }
+
+    suspend fun setNvidiaVoiceProvider(v: NvidiaVoiceProvider) {
+        store.edit { it[NV_VOICE_PROVIDER] = v.name }
+    }
+
+    suspend fun setNvidiaVoiceGender(v: NvidiaVoiceGender) {
+        store.edit { it[NV_VOICE_GENDER] = v.name }
+    }
+
+    suspend fun setNvidiaTtsSpeed(speed: Float) {
+        store.edit { it[NV_TTS_SPEED] = (speed * 100f).toInt().coerceIn(75, 150) }
+    }
+
+    suspend fun setNvidiaSpeechEndpoints(parakeetUrl: String, magpieUrl: String) {
+        store.edit {
+            val p = parakeetUrl.trim()
+            val m = magpieUrl.trim()
+            if (p.isEmpty()) it.remove(NV_PARAKEET_URL) else it[NV_PARAKEET_URL] = p
+            if (m.isEmpty()) it.remove(NV_MAGPIE_URL) else it[NV_MAGPIE_URL] = m
+        }
+    }
+
+    suspend fun setNvidiaRoleModels(roleName: String, primary: String, backup: String) {
+        store.edit { prefs ->
+            val p = primary.trim()
+            val b = backup.trim()
+            if (p.isEmpty()) prefs.remove(nvRolePrimaryKey(roleName)) else prefs[nvRolePrimaryKey(roleName)] = p
+            if (b.isEmpty()) prefs.remove(nvRoleBackupKey(roleName)) else prefs[nvRoleBackupKey(roleName)] = b
+        }
+    }
+
+    suspend fun clearNvidiaRoleModels() {
+        store.edit { prefs ->
+            for (role in listOf("MANAGER", "VISION", "PHONE_ACTION", "CODING", "FAST")) {
+                prefs.remove(nvRolePrimaryKey(role))
+                prefs.remove(nvRoleBackupKey(role))
+            }
+        }
+    }
+
     // Keystore AES-GCM is a Binder call (keystore2 / StrongBox): never on the caller's thread, which may be Main.
     private suspend fun openSecret(sealed: String): String? = withContext(Dispatchers.IO) { secrets.open(sealed) }
 
@@ -478,6 +582,23 @@ class SettingsStore internal constructor(
         private val VOICE_LANG = stringPreferencesKey("voice_language")
         private val READ_ALOUD = booleanPreferencesKey("read_aloud")
         private val SCREEN_CONTENT = stringPreferencesKey("screen_content")
+
+        private val NV_AUTO_ORCH = booleanPreferencesKey("nv_auto_orchestration")
+        private val NV_VISION_ON = booleanPreferencesKey("nv_vision_enabled")
+        private val NV_STREAMING_ON = booleanPreferencesKey("nv_streaming_enabled")
+        private val NV_POINTER_ON = booleanPreferencesKey("nv_pointer_enabled")
+        private val NV_POINTER_LABELS = booleanPreferencesKey("nv_pointer_labels")
+        private val NV_TIMEOUT_SEC = intPreferencesKey("nv_request_timeout_sec")
+        private val NV_MAX_RETRIES = intPreferencesKey("nv_max_retries")
+        private val NV_VOICE_CONTINUOUS = booleanPreferencesKey("nv_voice_continuous")
+        private val NV_VOICE_PROVIDER = stringPreferencesKey("nv_voice_provider")
+        private val NV_VOICE_GENDER = stringPreferencesKey("nv_voice_gender")
+        private val NV_TTS_SPEED = intPreferencesKey("nv_tts_speed_pct")
+        private val NV_PARAKEET_URL = stringPreferencesKey("nv_parakeet_url")
+        private val NV_MAGPIE_URL = stringPreferencesKey("nv_magpie_url")
+
+        private fun nvRolePrimaryKey(role: String) = stringPreferencesKey("nv_role_primary_${role.lowercase()}")
+        private fun nvRoleBackupKey(role: String) = stringPreferencesKey("nv_role_backup_${role.lowercase()}")
 
         private inline fun <reified E : Enum<E>> enumOf(name: String?, default: E): E =
             name?.let { n -> enumValues<E>().firstOrNull { it.name == n } } ?: default

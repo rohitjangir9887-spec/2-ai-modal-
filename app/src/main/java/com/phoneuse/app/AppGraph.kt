@@ -44,6 +44,17 @@ object AppGraph {
     lateinit var usage: UsageStore
         private set
 
+    /** Persistent scrubbed task checkpoints (SQLite) for step recovery and restart visibility. */
+    lateinit var checkpoints: TaskCheckpointStore
+        private set
+
+    /** Redacted in-memory ring buffer of execution events and failovers. */
+    lateinit var taskLogs: TaskExecutionLog
+        private set
+
+    /** Single-active-executor FIFO queue shared with AgentRunner. */
+    val taskQueue = TaskQueueManager()
+
     /** MCP servers and the Google connector; settings sealed in SettingsStore's encrypted secrets. */
     lateinit var connectors: Connectors
         private set
@@ -128,23 +139,28 @@ object AppGraph {
         }
         usage = UsageStore(app)
         memories = SqliteMemoryStore(app)
+        checkpoints = TaskCheckpointStore(SqliteTaskCheckpointBackend(app))
+        taskLogs = TaskExecutionLog()
         connectors = Connectors(
             http,
             ConnectorStore(read = { settings.readSecret(it) }, write = { k, v -> settings.writeSecret(k, v) }),
             log = { android.util.Log.w("Connectors", it) },
         )
-        runner = AgentRunner(app, settings, http, chats, uiVisible, usage, memories, memories, SqliteConversationSearch(app), connectors)
+        runner = AgentRunner(
+            app, settings, http, chats, uiVisible, usage, memories, memories,
+            SqliteConversationSearch(app), connectors, checkpoints, taskLogs, taskQueue,
+        )
         // A run the previous process died in left its question unanswered: say so in that conversation.
         val startedAt = System.currentTimeMillis()
         scope.launch {
+            runCatching { NvidiaOrchestrator.syncFromSettings(settings) }
             try {
-                ConversationStart.markInterrupted(
-                    sqliteChats, startedAt,
-                    com.phoneuse.i18n.tr(
-                        "This request was interrupted (the app stopped) and may not have finished.",
-                        "앱이 멈춰서 이 요청이 중간에 끊겼어요. 끝나지 않았을 수 있어요.",
-                    ),
+                val interruptedReason = com.phoneuse.i18n.tr(
+                    "This request was interrupted (the app stopped) and may not have finished.",
+                    "앱이 멈춰서 이 요청이 중간에 끊겼어요. 끝나지 않았을 수 있어요.",
                 )
+                checkpoints.markActiveInterrupted(startedAt, interruptedReason)
+                ConversationStart.markInterrupted(sqliteChats, startedAt, interruptedReason)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
