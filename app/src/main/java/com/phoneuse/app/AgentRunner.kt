@@ -535,7 +535,20 @@ class AgentRunner(
             val chosen = if (policy.inject) {
                 try {
                     // A secret saved before the memory filter existed never reaches the model.
-                    MemoryRanker.top(text, memories.candidates(text).filter { com.phoneuse.memory.MemorySecrets.refusal(it.text) == null })
+                    val selected = MemoryRanker.top(
+                        text,
+                        memories.candidates(text).filter { com.phoneuse.memory.MemorySecrets.refusal(it.text) == null },
+                    )
+                    // Keep explicitly confirmed language/tone preferences available across unrelated
+                    // tasks, without uploading the complete memory database on every model call.
+                    val style = Regex("(?i)hindi|hinglish|english|language|tone|style|speak|reply|भाषा|हिंदी|बोल|जवाब|बात करने")
+                    val pinned = memories.observeOnce().asSequence()
+                        .filter { it.kind == com.phoneuse.memory.MemoryKind.HABIT && it.confidence == com.phoneuse.memory.Confidence.SURE }
+                        .filter { style.containsMatchIn(it.text) && com.phoneuse.memory.MemorySecrets.refusal(it.text) == null }
+                        .take(3)
+                        .map { MemoryRanker.Scored(it, 1) }
+                        .toList()
+                    (selected + pinned).distinctBy { it.memory.id }.take(12)
                 } catch (e: Exception) {
                     Log.e(TAG, "reading memories failed", e)
                     emptyList()
