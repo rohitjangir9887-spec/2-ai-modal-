@@ -215,6 +215,7 @@ class AgentLoop(
         }
         // Where the run has been: a revisited screen says so (facts for the model to judge, no rules).
         val journal = ScreenJournal()
+        val stallGuard = ActionStallGuard()
         fun annotate(output: String, step: Int, action: String, screen: CompressedScreen?): String {
             val seen = screen?.let { journal.revisit(step, action, it) } ?: return output
             return ScreenJournal.withNote(output, seen)
@@ -394,6 +395,24 @@ class AgentLoop(
                 val description = describe(call, current)
                 val tipDescription = if (Lang.korean) description else describe(call, current, korean = true)
                 if (call.name !in QUIET_TOOLS) emit(AgentEvent.Acting(description))
+
+                // A previously unsuccessful call on an unchanged screen must not be repeated
+                // indefinitely. Replan once without executing it; then stop with a clear error.
+                when (stallGuard.check(call.name, call.argumentsJson, current?.let(ScreenJournal::fingerprint))) {
+                    ActionStallGuard.Decision.REPLAN -> {
+                        input += call
+                        addOutput(InputItem.FunctionOutput(
+                            call.callId,
+                            "ERROR: repeated action failed to change the screen. Nothing was done. " +
+                                "Replan using a different target or tool; do not repeat this call.",
+                        ), null)
+                        continue
+                    }
+                    ActionStallGuard.Decision.STOP ->
+                        throw Fail("Stopped repeated phone actions: no visible progress. " +
+                            "The last action was not repeated; check the current screen before trying again.")
+                    ActionStallGuard.Decision.ALLOW -> Unit
+                }
 
                 val screenBefore = current
                 val before = current?.packageName
