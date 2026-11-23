@@ -13,7 +13,7 @@ class SecretInMemoryException(message: String) : IllegalArgumentException(messag
  */
 object MemorySecrets {
     private val secretWord = Regex(
-        """(?i)비밀\s*번호|비번|암호|패스워드|핀\s*번호|인증\s*번호|보안\s*코드|일회용|\b(?:password|passwd|pwd|passcode|pin|otp|cvc|cvv|verification code|security code|one[- ]time code)\b""",
+        """(?i)पासवर्ड|ओटीपी|पिन|यूपीआई\s*पिन|\bupi[- ]?pin\b|비밀\s*번호|비번|암호|패스워드|핀\s*번호|인증\s*번호|보안\s*코드|일회용|\b(?:password|passwd|pwd|passcode|pin|otp|cvc|cvv|verification code|security code|one[- ]time code)\b""",
     )
 
     /** A value next to the word: 4+ digits, or "word: value" / "word is value" with a digit or 6+ characters. */
@@ -21,11 +21,20 @@ object MemorySecrets {
         """\d{4,}|(?i)(?:[:=]|\bis\b|(?:는|은|이|가)\s)\s*\S*\d\S*|[:=]\s*\S{6,}""",
     )
 
+    // Indian identity documents must never enter persistent AI memory.
+    private val aadhaar = Regex("""(?<!\d)[2-9]\d{3}[ -]?\d{4}[ -]?\d{4}(?!\d)""")
+    private val pan = Regex("""(?<![A-Za-z0-9])[A-Z]{5}[0-9]{4}[A-Z](?![A-Za-z0-9])""", RegexOption.IGNORE_CASE)
+
     private val cardLike = Regex("""(?<!\d)(?:\d[ -]?){12,18}\d(?!\d)""")
     private val rrn = Regex("""(?<!\d)(\d{2})(\d{2})(\d{2})\s*-?\s*([1-8])\d{6}(?!\d)""")
 
     /** Why [text] may not be remembered, or null when it may. */
     fun refusal(text: String): String? = when {
+        aadhaar.containsMatchIn(text) || pan.containsMatchIn(text) ->
+            tr(
+                "Not remembered: Aadhaar or PAN details must not be stored in AI memory",
+                "기억하지 않았어요: 신분증 번호는 AI 기억에 저장하지 않아요",
+            )
         rrn.findAll(text).any { m -> plausibleBirth(m.groupValues[2], m.groupValues[3]) } ->
             tr(
                 "Not remembered: it contains a resident registration number. Memories are plain text sent to the model, so ID numbers are never kept",
