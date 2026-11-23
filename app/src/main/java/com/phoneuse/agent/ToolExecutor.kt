@@ -78,6 +78,8 @@ class ToolExecutor(
     confirmSend: Boolean = true,
     /** Settings "모델에 보내는 화면 내용: 글자만": false keeps screenshots out of the run (the screen tree still goes). */
     private val screenshots: Boolean = true,
+    /** Avoid sending a new marked image after simple, accessible scroll/typing steps. */
+    private val adaptiveCapture: Boolean = false,
     /**
      * An earlier run of this conversation read third-party text (ChatRepository.thirdPartySeen): its
      * history may carry that text, so remember only guesses, user_authorized is ignored, the confirm setting
@@ -919,7 +921,7 @@ class ToolExecutor(
                 break
             }
         }
-        return screenResult(lines.joinToString("\n"), finalScreen ?: refresh(afterTool = acted, baseline = working))
+        return screenResult(lines.joinToString("\n"), finalScreen ?: refresh(afterTool = acted, baseline = working), afterTool = acted)
     }
 
     /**
@@ -1047,12 +1049,17 @@ class ToolExecutor(
     }
 
     private suspend fun settled(head: String, afterTool: String? = null, baseline: CompressedScreen? = null): ToolResult =
-        screenResult(head, refresh(afterTool, baseline))
+        screenResult(head, refresh(afterTool, baseline), afterTool)
 
-    private suspend fun screenResult(head: String, screen: CompressedScreen): ToolResult {
+    /** A fresh accessibility tree and protected-screen probe still run for EVERY action. */
+    private fun needsMarkedImage(afterTool: String?, screen: CompressedScreen): Boolean =
+        screenshots && (!adaptiveCapture || afterTool !in setOf("scroll", "type_text") ||
+            screen.elements.values.none { it.isActionable })
+
+    private suspend fun screenResult(head: String, screen: CompressedScreen, afterTool: String? = null): ToolResult {
         val prefix = if (head.isEmpty()) "# Screen\n" else "$head\n\n# Screen\n"
         return try {
-            val (visible, image) = checkedScreen(screen, if (screenshots) Capture.MARKED else Capture.PROBE)
+            val (visible, image) = checkedScreen(screen, if (needsMarkedImage(afterTool, screen)) Capture.MARKED else Capture.PROBE)
             ToolResult(prefix + visible.text, visible, image, null)
         } catch (e: WithheldScreen) {
             withheldResult(prefix, e.screen)
