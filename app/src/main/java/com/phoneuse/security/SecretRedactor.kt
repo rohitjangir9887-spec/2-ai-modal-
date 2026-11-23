@@ -12,6 +12,10 @@ object SecretRedactor {
     private val KEY_PREFIX_PATTERN = Regex("""\b(nvapi-[A-Za-z0-9_-]{8,}|sk-ant-[A-Za-z0-9_-]{8,}|sk-[A-Za-z0-9_-]{8,}|xai-[A-Za-z0-9_-]{8,}|AIza[0-9A-Za-z_-]{12,})""")
     private val FIELD_SECRET_PATTERN = Regex("""(?i)\b(api[_-]?key|authorization|token|password|passwd|secret|otp|pin|passcode)\b\s*[:=]\s*["']?([^\s"',;]{3,})["']?""")
 
+    /** Indian IDs are private even when accidentally printed by tool output or model errors. */
+    private val AADHAAR_PATTERN = Regex("""(?<!\d)[2-9]\d{3}[ -]?\d{4}[ -]?\d{4}(?!\d)""")
+    private val PAN_PATTERN = Regex("""(?<![A-Za-z0-9])[A-Z]{5}\d{4}[A-Z](?![A-Za-z0-9])""", RegexOption.IGNORE_CASE)
+
     fun redact(text: String, knownSecrets: Collection<String> = emptyList()): String {
         if (text.isEmpty()) return text
         var out = text
@@ -24,6 +28,8 @@ object SecretRedactor {
         out = BEARER_PATTERN.replace(out, "Bearer $REDACTED_KEY")
         out = KEY_PREFIX_PATTERN.replace(out, REDACTED_KEY)
         out = FIELD_SECRET_PATTERN.replace(out) { m -> "${m.groupValues[1]}=$REDACTED_SECRET" }
+        out = AADHAAR_PATTERN.replace(out, REDACTED_SECRET)
+        out = PAN_PATTERN.replace(out, REDACTED_SECRET)
         return out
     }
 
