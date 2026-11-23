@@ -431,7 +431,7 @@ class AgentLoop(
                 val result = executor.execute(call, current)
                 // Debug builds only: arguments and outputs carry typed text, messages and screen contents.
                 if (BuildConfig.DEBUG) {
-                    TRACE.info("step=$step call=${call.name} args=${call.argumentsJson.take(300)} -> ${result.output.take(1500).replace('\n', '|')}")
+                    TRACE.info("step=$step tool=${call.name} completed=${!result.output.startsWith(\"ERROR\")}")
                 }
                 // The user wrote while the run was finishing: it goes on with the new instruction instead.
                 val overridden = result.finishedSummary != null && !steering.closeIfEmpty()
