@@ -429,9 +429,9 @@ class AgentLoop(
                     continue
                 }
                 val result = executor.execute(call, current)
-                // Debug builds only: arguments and outputs carry typed text, messages and screen contents.
+                // Diagnostic log intentionally records only a tool name and success flag, never private arguments or screen text.
                 if (BuildConfig.DEBUG) {
-                    TRACE.info("step=$step tool=${call.name} completed=${!result.output.startsWith(\"ERROR\")}")
+                    TRACE.info("step=$step tool=${call.name} completed=${!result.output.startsWith("ERROR")}")
                 }
                 // The user wrote while the run was finishing: it goes on with the new instruction instead.
                 val overridden = result.finishedSummary != null && !steering.closeIfEmpty()
