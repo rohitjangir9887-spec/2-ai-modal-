@@ -6,6 +6,15 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class RiskGuardTest {
+    @Test fun hindiFinancialAccountAndMessagingActionsAreGuarded() {
+        assertEquals(RiskCategory.MONEY, RiskGuard.classify("भुगतान करें", null))
+        assertEquals(RiskCategory.MONEY, RiskGuard.classify("पैसे भेजें", null))
+        assertEquals(RiskCategory.SECURITY, RiskGuard.classify("लॉगिन", null))
+        assertEquals(RiskCategory.SECURITY, RiskGuard.classify("यूपीआई पिन", null))
+        assertEquals(RiskCategory.SEND, RiskGuard.classify("मैसेज भेजें", null))
+        assertEquals(RiskCategory.DELETE, RiskGuard.classify("डिलीट", null))
+    }
+
     @Test fun money() {
         assertEquals(RiskCategory.MONEY, RiskGuard.classify("결제하기", null))
         assertEquals(RiskCategory.MONEY, RiskGuard.classify("Pay now", null))
