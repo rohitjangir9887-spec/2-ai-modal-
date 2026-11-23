@@ -186,6 +186,7 @@ fun DockContent(
     var sendRefused by remember(draft.text) { mutableStateOf(false) }
     var queueMode by remember { mutableStateOf(false) }
     var logsExpanded by remember { mutableStateOf(false) }
+    var minimized by remember { mutableStateOf(false) }
     val focusManager = LocalFocusManager.current
     val keyboard = LocalSoftwareKeyboardController.current
 
@@ -270,10 +271,13 @@ fun DockContent(
                 StatusHeader(
                     state = state,
                     expanded = logsExpanded,
+                    minimized = minimized,
+                    onToggleMinimized = { minimized = !minimized },
                     onToggleLogs = { logsExpanded = !logsExpanded },
                     onPauseToggle = onPauseToggle,
                     onStop = onStop,
                 )
+                if (!minimized) {
                 LogLines(state, expanded = logsExpanded)
                 val placeholder = if (queueMode) {
                     tr("Queue next task…", "다음 작업 대기열에 추가…")
@@ -308,6 +312,7 @@ fun DockContent(
                         color = if (queueMode) c.accentText else c.textSub,
                     )
                 }
+                }
             } else {
                 CardBody(card) { result -> onCardResult(card.id, result) }
                 input(if (card is DockCard.Ask) tr("You can type another answer", "다른 답을 써도 돼요") else tr("Tell me if you want it different", "다르게 하려면 말해 주세요"), true)
@@ -327,6 +332,8 @@ fun DockContent(
 private fun StatusHeader(
     state: AgentUiState,
     expanded: Boolean,
+    minimized: Boolean,
+    onToggleMinimized: () -> Unit,
     onToggleLogs: () -> Unit,
     onPauseToggle: () -> Unit,
     onStop: () -> Unit,
@@ -350,7 +357,18 @@ private fun StatusHeader(
                 fontWeight = FontWeight.Medium,
                 color = c.text,
             )
-            if (state.allLines.size > 3) {
+            Text(
+                if (minimized) "+" else "−",
+                Modifier
+                    .testTag("overlay_minimize_toggle")
+                    .semantics { contentDescription = if (minimized) "Expand task controls" else "Minimize task controls" }
+                    .clip(RoundedCornerShape(10.dp))
+                    .clickable(role = Role.Button, onClick = onToggleMinimized)
+                    .padding(horizontal = 9.dp, vertical = 6.dp),
+                fontSize = 14.sp, color = c.textSub,
+            )
+            Spacer(Modifier.width(3.dp))
+            if (!minimized && state.allLines.size > 3) {
                 Text(
                     if (expanded) tr("Less", "접기") else tr("Logs", "로그"),
                     Modifier
