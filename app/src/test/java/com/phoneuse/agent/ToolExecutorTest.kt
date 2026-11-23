@@ -132,6 +132,19 @@ class ToolExecutorTest {
         assertTrue(ex.execute(call("screenshot", "{}"), null).output.startsWith("ERROR: screenshots are off"))
     }
 
+    @Test fun adaptiveCaptureKeepsAccessibleScrollTextOnlyButStillAllowsExplicitVision() = runTest {
+        val screen = snap("Settings", "Wi-Fi")
+        val device = FakeDeviceController(List(8) { screen })
+        val executor = ToolExecutor(device, FakeUserGate(), screenshots = true, adaptiveCapture = true)
+        val before = screenOf(screen)
+        val moved = executor.execute(call("scroll", """{"direction":"down"}"""), before)
+        assertTrue(moved.output.contains("# Screen"))
+        assertNotNull(moved.screen)
+        assertNull("Simple accessible scroll should avoid an image upload", moved.screenshot)
+        val screenshot = executor.execute(call("screenshot", "{}"), moved.screen)
+        assertNotNull("The user can still request a screenshot explicitly", screenshot.screenshot)
+    }
+
     @Test fun suggestedRunIsTaintedFromItsFirstStep() = runTest {
         // A side-button suggestion's prompt was written from screen text. AgentRunner marks the run
         // third-party before its first step, so a search typed or a link opened from it runs under taint and a
