@@ -177,12 +177,13 @@ object RiskGuard {
     )
     private val strongSecurity = Keywords(
         listOf(
+            "लॉगिन", "लॉग इन", "साइन इन",
             "पासवर्ड", "यूपीआई पिन", "ओटीपी",
             "비밀번호", "탈퇴", "기기 관리자", "기기관리자",
             "パスワード", "退会", "暗証番号", "デバイス管理",
             "密码", "密碼", "注销", "註銷", "设备管理", "裝置管理",
         ),
-        listOf("password", "device admin"),
+        listOf("password", "sign in", "log in", "device admin"),
     )
     private val strongDelete = Keywords(
         listOf("डिलीट", "मिटाएं",
