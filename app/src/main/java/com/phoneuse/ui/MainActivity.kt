@@ -722,6 +722,7 @@ private fun AppRoot(
                 )
                 val logs by AppGraph.taskLogs.entries.collectAsState()
                 val liveSteps by vm.liveSteps.collectAsState()
+                val isTaskRunning by vm.running.collectAsState()
                 val timelineSteps = liveSteps.mapIndexed { idx, s ->
                     StepTimelineItem(
                         stepIndex = idx + 1,
@@ -729,7 +730,7 @@ private fun AppRoot(
                         tool = "PhoneAction",
                         durationMs = 0L,
                         isSuccess = true,
-                        isRunning = idx == liveSteps.size - 1 && vm.running.value,
+                        isRunning = idx == liveSteps.size - 1 && isTaskRunning,
                     )
                 }
                 TaskDetailsDashboard(
