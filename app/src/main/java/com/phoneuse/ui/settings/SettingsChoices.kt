@@ -10,7 +10,18 @@ import com.phoneuse.app.UnfoldedLayout
 import com.phoneuse.app.VoiceLanguage
 
 /** The settings that open a choice dialog. */
-enum class Choice { RETENTION, ASSIST, SPEED, SUMMARY, QUIET, FONT, UNFOLDED, VOICE, SCREEN }
+enum class Choice { RETENTION, ASSIST, SPEED, SUMMARY, QUIET, FONT, UNFOLDED, VOICE, SCREEN, JULI_VOICE, JULI_TONE }
+
+val JULI_VOICE_LABELS get() = listOf(
+    "JULI_FEMALE" to "Juli (Indian Female / हिन्दी)",
+    "ROHAN_MALE" to "Rohan (Indian Male / हिन्दी)",
+    "NEUTRAL" to "Assistant Neutral",
+)
+
+val JULI_TONE_LABELS get() = listOf(
+    "POLITE" to tr("Polite / शिष्ट", "정중한 어조"),
+    "CASUAL" to tr("Casual / सहज", "편안한 어조"),
+)
 
 val RETENTION_LABELS get() = listOf(30 to tr("30 days", "30일"), 90 to tr("90 days", "90일"), 365 to tr("1 year", "1년"), 0 to tr("Forever", "무기한"))
 val ASSIST_LABELS get() = listOf(AssistAction.SUGGEST to tr("Ideas for this screen", "이 화면으로 할 일"), AssistAction.TYPE to tr("Talk right away", "바로 말하기"))

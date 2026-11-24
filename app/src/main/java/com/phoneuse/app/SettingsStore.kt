@@ -207,6 +207,10 @@ class SettingsStore internal constructor(
     val nvidiaRequestTimeoutSec: Flow<Int> = store.data.map { (it[NV_TIMEOUT_SEC] ?: 60).coerceIn(15, 180) }
     val nvidiaMaxRetries: Flow<Int> = store.data.map { (it[NV_MAX_RETRIES] ?: 2).coerceIn(0, 5) }
     val nvidiaContinuousVoice: Flow<Boolean> = store.data.map { it[NV_VOICE_CONTINUOUS] ?: false }
+    val juliWakeWordOn: Flow<Boolean> = store.data.map { it[JULI_WAKE_WORD] ?: false }
+    val juliWakeWordSensitivity: Flow<Float> = store.data.map { (it[JULI_WAKE_SENS] ?: 70) / 100f }
+    val juliVoicePersona: Flow<String> = store.data.map { it[JULI_VOICE_PERSONA] ?: "JULI_FEMALE" }
+    val juliTone: Flow<String> = store.data.map { it[JULI_TONE] ?: "POLITE" }
     val nvidiaVoiceProvider: Flow<NvidiaVoiceProvider> = store.data.map { enumOf(it[NV_VOICE_PROVIDER], NvidiaVoiceProvider.ANDROID) }
     val nvidiaVoiceGender: Flow<NvidiaVoiceGender> = store.data.map { enumOf(it[NV_VOICE_GENDER], NvidiaVoiceGender.NEUTRAL) }
     val nvidiaTtsSpeed: Flow<Float> = store.data.map { (it[NV_TTS_SPEED] ?: 100).coerceIn(75, 150) / 100f }
@@ -466,6 +470,22 @@ class SettingsStore internal constructor(
         store.edit { it[NV_VOICE_CONTINUOUS] = v }
     }
 
+    suspend fun setJuliWakeWord(v: Boolean) {
+        store.edit { it[JULI_WAKE_WORD] = v }
+    }
+
+    suspend fun setJuliWakeWordSensitivity(sens: Float) {
+        store.edit { it[JULI_WAKE_SENS] = (sens * 100f).toInt().coerceIn(10, 100) }
+    }
+
+    suspend fun setJuliVoicePersona(persona: String) {
+        store.edit { it[JULI_VOICE_PERSONA] = persona }
+    }
+
+    suspend fun setJuliTone(tone: String) {
+        store.edit { it[JULI_TONE] = tone }
+    }
+
     suspend fun setNvidiaVoiceProvider(v: NvidiaVoiceProvider) {
         store.edit { it[NV_VOICE_PROVIDER] = v.name }
     }
@@ -596,6 +616,10 @@ class SettingsStore internal constructor(
         private val NV_TTS_SPEED = intPreferencesKey("nv_tts_speed_pct")
         private val NV_PARAKEET_URL = stringPreferencesKey("nv_parakeet_url")
         private val NV_MAGPIE_URL = stringPreferencesKey("nv_magpie_url")
+        private val JULI_WAKE_WORD = booleanPreferencesKey("juli_wake_word_on")
+        private val JULI_WAKE_SENS = intPreferencesKey("juli_wake_sensitivity")
+        private val JULI_VOICE_PERSONA = stringPreferencesKey("juli_voice_persona")
+        private val JULI_TONE = stringPreferencesKey("juli_tone")
 
         private fun nvRolePrimaryKey(role: String) = stringPreferencesKey("nv_role_primary_${role.lowercase()}")
         private fun nvRoleBackupKey(role: String) = stringPreferencesKey("nv_role_backup_${role.lowercase()}")

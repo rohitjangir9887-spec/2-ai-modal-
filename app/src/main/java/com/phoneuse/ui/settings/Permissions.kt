@@ -15,7 +15,7 @@ import android.widget.Toast
 import com.phoneuse.phone.PhoneUseNotificationListener
 import com.phoneuse.service.PhoneUseAccessibilityService
 
-enum class PermissionKey { ACCESSIBILITY, ALL_FILES, NOTIFICATIONS, NOTIFICATION_ACCESS, ASSISTANT, BATTERY }
+enum class PermissionKey { ACCESSIBILITY, MICROPHONE, ASSISTANT, ALL_FILES, NOTIFICATIONS, NOTIFICATION_ACCESS, BATTERY }
 
 data class PermissionStatus(
     val key: PermissionKey,
@@ -35,6 +35,12 @@ object Permissions {
         PermissionKey.ACCESSIBILITY -> PermissionStatus(
             key, tr("Accessibility service", "접근성 서비스"), tr("Reads the screen and taps for you", "화면을 읽고 대신 눌러요"), accessibilityOn(context),
             tr("If OpenPhoneUse is greyed out in the list: Settings › Apps › OpenPhoneUse › top-right ⋮ › Allow restricted settings, then turn it on again.", "목록에서 OpenPhoneUse가 회색으로 막혀 있으면: 설정 › 애플리케이션 › OpenPhoneUse › 오른쪽 위 ⋮ › ‘제한된 설정 허용’ 후 다시 켜 주세요."),
+        )
+        PermissionKey.MICROPHONE -> PermissionStatus(
+            key, tr("Microphone (Juli Voice & Hey Juli)", "마이크 (줄리 음성 대화 · Hey Juli)"),
+            tr("Enables two-way voice conversation and offline 'Hey Juli' wake word", "음성 대화, Hey Juli 호출어 감지 및 음성 명령을 사용해요"),
+            androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.RECORD_AUDIO) == android.content.pm.PackageManager.PERMISSION_GRANTED,
+            tr("Required to speak with Juli and use hands-free offline wake word activation.", "줄리 음성 비서와 대화하고 핸즈프리 호출 기능을 사용하기 위해 필요해요."),
         )
         PermissionKey.ALL_FILES -> PermissionStatus(
             key, tr("All files access", "모든 파일 접근"), tr("Tidies your Downloads and Photos folders", "다운로드·사진 폴더를 정리해요"), Environment.isExternalStorageManager(), null,
@@ -75,6 +81,10 @@ object Permissions {
         val pkg = Uri.parse("package:${context.packageName}")
         val candidates = when (key) {
             PermissionKey.ACCESSIBILITY -> listOf(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+            PermissionKey.MICROPHONE -> listOf(
+                Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, pkg),
+                Intent(Settings.ACTION_MANAGE_APPLICATIONS_SETTINGS),
+            )
             PermissionKey.ALL_FILES -> listOf(
                 Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, pkg),
                 Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION),

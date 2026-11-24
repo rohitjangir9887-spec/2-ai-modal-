@@ -187,6 +187,7 @@ fun SettingsScreen(
     var permissionsOpen by rememberSaveable { mutableStateOf(false) }
     var licensesOpen by rememberSaveable { mutableStateOf(false) }
     var nvidiaOpen by rememberSaveable { mutableStateOf(false) }
+    var juliVoiceOpen by rememberSaveable { mutableStateOf(false) }
     var exporting by remember { mutableStateOf(false) }
     // A shorter retention that would delete conversations at once: (days, how many) until confirmed.
     var shorten by remember { mutableStateOf<Pair<Int, Int>?>(null) }
@@ -204,10 +205,25 @@ fun SettingsScreen(
     val voice by settings.voiceLanguage.collectAsState(SettingsStore.DEFAULT_VOICE_LANGUAGE)
     val readAloud by settings.readAloud.collectAsState(false)
     val screenContent by settings.screenContent.collectAsState(ScreenContent.ALL)
+    val juliWakeWord by settings.juliWakeWordOn.collectAsState(false)
+    val continuousVoice by settings.nvidiaContinuousVoice.collectAsState(false)
+    val juliVoicePersona by settings.juliVoicePersona.collectAsState("JULI_FEMALE")
+    val juliTone by settings.juliTone.collectAsState("POLITE")
 
     if (permissionsOpen) {
         BackHandler { permissionsOpen = false }
         PermissionsPage(permissions, onBack = { permissionsOpen = false }, modifier = modifier)
+        return
+    }
+    if (juliVoiceOpen) {
+        BackHandler { juliVoiceOpen = false }
+        JuliVoiceSettingsPage(
+            settings = settings,
+            permissions = permissions,
+            onBack = { juliVoiceOpen = false },
+            onOpenPermissions = { permissionsOpen = true },
+            modifier = modifier,
+        )
         return
     }
     if (licensesOpen) {
@@ -297,7 +313,7 @@ fun SettingsScreen(
                     tr("Phone permissions", "폰 권한"),
                     if (missing == 0) tr("All allowed", "모두 허용") else tr("$missing needed", "${missing}개 필요"),
                     onClick = { permissionsOpen = true },
-                    sub = tr("Accessibility, files, notifications, location", "접근성, 파일, 알림, 위치"),
+                    sub = tr("Accessibility, microphone, assistant, files, notifications", "접근성, 마이크, 어시스턴트, 파일, 알림"),
                     dot = if (missing == 0) c.success else c.accentText,
                 )
             }
@@ -330,13 +346,46 @@ fun SettingsScreen(
                 ValueRow(tr("Quiet hours", "방해하지 않는 시간"), quietLabel(quiet), onClick = { choice = Choice.QUIET }, mono = quiet.on)
             }
 
-            Section(tr("Display and voice", "화면과 음성"))
+            Section(tr("JULI AI Voice Assistant", "줄리 AI 음성 어시스턴트"))
+            Group {
+                SubRow(
+                    tr("Juli AI & “Hey Juli” setup", "줄리 AI 음성 비서 및 ‘Hey Juli’ 설정"),
+                    tr("Continuous speech, offline wake word, voice personas & permissions", "연속 음성 대화 · 오프라인 호출어 · 음성 페르소나 · 마이크 권한"),
+                    onClick = { juliVoiceOpen = true },
+                    first = true,
+                )
+                SwitchRow(
+                    tr("“Hey Juli” wake word", "‘Hey Juli’ 호출어 감지"),
+                    tr("Wake assistant hands-free with 'Hey Juli' or 'हे जूली'", "‘Hey Juli’ 또는 ‘हे जूली’ 음성으로 바로 깨워요"),
+                    juliWakeWord,
+                ) { v -> scope.launch { settings.setJuliWakeWord(v) } }
+                SwitchRow(
+                    tr("Continuous conversation", "연속 음성 대화"),
+                    tr("Automatically listens again after Juli speaks", "줄리가 답변을 마치면 자동으로 다시 경청해요"),
+                    continuousVoice,
+                ) { v -> scope.launch { settings.setNvidiaContinuousVoice(v) } }
+                ValueRow(
+                    tr("Voice persona", "음성 비서 목소리"),
+                    label(JULI_VOICE_LABELS, juliVoicePersona),
+                    onClick = { choice = Choice.JULI_VOICE },
+                )
+                ValueRow(
+                    tr("Speak by voice", "음성으로 말하기"),
+                    label(VOICE_LABELS, voice),
+                    onClick = { choice = Choice.VOICE },
+                )
+                SwitchRow(
+                    tr("Read answers aloud", "답 소리 내어 읽기"),
+                    tr("Reads the answer when a task finishes", "작업이 끝나면 답을 읽어 줘요"),
+                    readAloud,
+                ) { v -> scope.launch { settings.setReadAloud(v) } }
+            }
+
+            Section(tr("Display", "화면"))
             Group {
                 ValueRow(tr("Theme", "테마"), THEME_OPTIONS.first { it.first == theme }.second, onClick = { themeDialog = true }, first = true)
                 ValueRow(tr("Text size", "글자 크기"), label(FONT_LABELS, fontSize), onClick = { choice = Choice.FONT })
                 ValueRow(tr("On the unfolded screen", "펼친 화면에서"), label(UNFOLDED_LABELS, unfolded), onClick = { choice = Choice.UNFOLDED })
-                ValueRow(tr("Speak by voice", "음성으로 말하기"), label(VOICE_LABELS, voice), onClick = { choice = Choice.VOICE })
-                SwitchRow(tr("Read answers aloud", "답 소리 내어 읽기"), tr("Reads the answer when a task finishes", "작업이 끝나면 답을 읽어 줘요"), readAloud) { v -> scope.launch { settings.setReadAloud(v) } }
             }
 
             Section(tr("Privacy", "개인정보"))
@@ -463,6 +512,12 @@ fun SettingsScreen(
             Choice.FONT -> ChoiceDialog(tr("Text size", "글자 크기"), FONT_LABELS, fontSize, close) { v -> scope.launch { settings.setFontSize(v) } }
             Choice.UNFOLDED -> ChoiceDialog(tr("On the unfolded screen", "펼친 화면에서"), UNFOLDED_LABELS, unfolded, close) { v -> scope.launch { settings.setUnfoldedLayout(v) } }
             Choice.VOICE -> ChoiceDialog(tr("Speak by voice", "음성으로 말하기"), VOICE_LABELS, voice, close) { v -> scope.launch { settings.setVoiceLanguage(v) } }
+            Choice.JULI_VOICE -> ChoiceDialog(tr("Voice persona", "음성 비서 목소리"), JULI_VOICE_LABELS, juliVoicePersona, close) { v ->
+                scope.launch { settings.setJuliVoicePersona(v) }
+            }
+            Choice.JULI_TONE -> ChoiceDialog(tr("Conversational tone", "대화 어조"), JULI_TONE_LABELS, juliTone, close) { v ->
+                scope.launch { settings.setJuliTone(v) }
+            }
             Choice.SCREEN -> ChoiceDialog(
                 tr("Screen content sent to the model", "모델에 보내는 화면 내용"), SCREEN_LABELS, screenContent, close,
                 note = tr("With ‘Text only’, no screenshots are sent, just the text and structure of the screen. Screens made only of images get harder to handle.", "‘글자만’이면 화면 캡처는 보내지 않고 화면의 글자와 구조만 보내요. 그림으로만 된 화면은 다루기 어려워져요."),
@@ -1389,6 +1444,154 @@ private fun PermissionRow(p: PermissionStatus, first: Boolean, onOpen: () -> Uni
                 lineHeight = 18.sp,
                 color = c.text2,
             )
+        }
+    }
+}
+
+@Composable
+private fun JuliVoiceSettingsPage(
+    settings: SettingsStore,
+    permissions: List<PermissionStatus>,
+    onBack: () -> Unit,
+    onOpenPermissions: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val c = pu
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val juliWakeWord by settings.juliWakeWordOn.collectAsState(false)
+    val continuousVoice by settings.nvidiaContinuousVoice.collectAsState(false)
+    val persona by settings.juliVoicePersona.collectAsState("JULI_FEMALE")
+    val tone by settings.juliTone.collectAsState("POLITE")
+    val voiceLang by settings.voiceLanguage.collectAsState(SettingsStore.DEFAULT_VOICE_LANGUAGE)
+    val readAloud by settings.readAloud.collectAsState(false)
+    val micStatus = permissions.firstOrNull { it.key == PermissionKey.MICROPHONE }
+    val assistantStatus = permissions.firstOrNull { it.key == PermissionKey.ASSISTANT }
+    var choice by rememberSaveable { mutableStateOf<Choice?>(null) }
+    var testingVoice by remember { mutableStateOf(false) }
+
+    Column(modifier.fillMaxSize().background(c.bg)) {
+        Row(
+            Modifier.fillMaxWidth().height(56.dp).padding(start = 6.dp, end = 6.dp, top = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            IconBtn(PuIcons.Back, tr("Back", "뒤로"), onBack)
+            Text(tr("JULI AI Voice Setup", "줄리 AI 음성 비서 설정"), Modifier.weight(1f), fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = c.text, textAlign = TextAlign.Center)
+            Spacer(Modifier.width(44.dp))
+        }
+
+        Column(
+            Modifier
+                .weight(1f)
+                .verticalScroll(rememberScrollState())
+                .padding(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 24.dp),
+        ) {
+            Section(tr("Permissions & Status", "필수 권한 및 상태"))
+            Group {
+                ValueRow(
+                    tr("Microphone permission", "마이크 권한"),
+                    if (micStatus?.granted == true) tr("Allowed (Active)", "허용됨") else tr("Action Required", "권한 필요"),
+                    onClick = { Permissions.open(context, PermissionKey.MICROPHONE) },
+                    sub = tr("Record audio for continuous chat & Hey Juli", "실시간 음성 대화 및 호출어 감지에 필요"),
+                    dot = if (micStatus?.granted == true) c.success else c.accentText,
+                    first = true,
+                )
+                ValueRow(
+                    tr("Digital assistant role", "기본 어시스턴트 역할"),
+                    if (assistantStatus?.granted == true) tr("Active", "설정됨") else tr("Optional", "선택 사항"),
+                    onClick = { Permissions.open(context, PermissionKey.ASSISTANT) },
+                    sub = tr("Side button long-press assistant trigger", "측면 버튼 길게 누르기로 호출"),
+                    dot = if (assistantStatus?.granted == true) c.success else c.textSub,
+                )
+                ValueRow(
+                    tr("All phone permissions", "전체 폰 권한 보기"),
+                    tr("Checklist", "확인"),
+                    onClick = onOpenPermissions,
+                )
+            }
+
+            Section(tr("Hands-Free Activation", "핸즈프리 호출어"))
+            Group {
+                SwitchRow(
+                    tr("“Hey Juli” offline detection", "‘Hey Juli’ 오프라인 호출어"),
+                    tr("Wake assistant hands-free with 'Hey Juli' or 'हे जूली'", "화면이 켜져 있을 때 ‘Hey Juli’ 또는 ‘हे जूली’로 호출"),
+                    juliWakeWord,
+                    first = true,
+                ) { v -> scope.launch { settings.setJuliWakeWord(v) } }
+                SwitchRow(
+                    tr("Continuous speech loop", "연속 대화 모드"),
+                    tr("Auto-listen after Juli completes speaking without pressing mic", "답변 후 마이크를 다시 누르지 않아도 자동으로 대화"),
+                    continuousVoice,
+                ) { v -> scope.launch { settings.setNvidiaContinuousVoice(v) } }
+            }
+
+            Section(tr("Voice Persona & Tone", "목소리 및 대화 스타일"))
+            Group {
+                ValueRow(
+                    tr("Voice persona", "음성 비서 목소리"),
+                    label(JULI_VOICE_LABELS, persona),
+                    onClick = { choice = Choice.JULI_VOICE },
+                    first = true,
+                )
+                ValueRow(
+                    tr("Conversational tone", "대화 어조"),
+                    label(JULI_TONE_LABELS, tone),
+                    onClick = { choice = Choice.JULI_TONE },
+                )
+                ValueRow(
+                    tr("Language & accent", "인식 언어"),
+                    label(VOICE_LABELS, voiceLang),
+                    onClick = { choice = Choice.VOICE },
+                )
+                SwitchRow(
+                    tr("Read answers aloud", "답 소리 내어 읽기"),
+                    tr("Reads final task results aloud", "작업 완료 시 결과를 음성으로 낭독"),
+                    readAloud,
+                ) { v -> scope.launch { settings.setReadAloud(v) } }
+            }
+
+            Section(tr("Voice Test", "음성 테스트"))
+            Group {
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 52.dp)
+                        .clickable(role = Role.Button, enabled = !testingVoice) {
+                            testingVoice = true
+                            com.phoneuse.voice.KokoroVoiceEngine.speak(
+                                context = context,
+                                text = "नमस्ते! मैं जूली हूँ, आपकी AI फोन असिस्टेंट। मैं आपकी क्या मदद कर सकती हूँ?",
+                                languageTag = "hi-IN",
+                                onDone = { testingVoice = false },
+                            )
+                        }
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(tr("Test Juli Voice", "줄리 목소리 시험 듣기"), fontSize = 15.sp, color = c.text)
+                        Text(tr("“नमस्ते! मैं जूली हूँ...” sample playback", "“नमस्ते! मैं जूली हूँ...” 음성 재생"), fontSize = 12.5.sp, color = c.textSub)
+                    }
+                    Spacer(Modifier.width(8.dp))
+                    Text(if (testingVoice) "..." else "▶", fontSize = 14.sp, color = c.accentText)
+                }
+            }
+        }
+    }
+
+    choice?.let { open ->
+        val close = { choice = null }
+        when (open) {
+            Choice.JULI_VOICE -> ChoiceDialog(tr("Voice persona", "음성 비서 목소리"), JULI_VOICE_LABELS, persona, close) { v ->
+                scope.launch { settings.setJuliVoicePersona(v) }
+            }
+            Choice.JULI_TONE -> ChoiceDialog(tr("Conversational tone", "대화 어조"), JULI_TONE_LABELS, tone, close) { v ->
+                scope.launch { settings.setJuliTone(v) }
+            }
+            Choice.VOICE -> ChoiceDialog(tr("Speak by voice", "음성으로 말하기"), VOICE_LABELS, voiceLang, close) { v ->
+                scope.launch { settings.setVoiceLanguage(v) }
+            }
+            else -> Unit
         }
     }
 }
