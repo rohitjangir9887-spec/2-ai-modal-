@@ -91,9 +91,12 @@ class LiveVoiceSession(
     private val isLiveActive = AtomicBoolean(false)
 
     init {
-        // Wire callbacks to VoiceSessionManager.shared
+        // Wire callbacks to VoiceSessionManager.shared safely without recursion
         VoiceSessionManager.shared.attachCallbacks(
-            onStopSpeech = { interruptSpeech() },
+            onStopSpeech = {
+                stopSpeakingPulse()
+                KokoroVoiceEngine.stop()
+            },
             onStartListening = { triggerListening() },
         )
     }

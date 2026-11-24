@@ -31,6 +31,7 @@ class VoiceSessionManager(
 ) {
     private val _state = MutableStateFlow(VoiceLiveState())
     val state: StateFlow<VoiceLiveState> = _state.asStateFlow()
+    private var isBargingIn = false
 
     fun attachCallbacks(onStopSpeech: () -> Unit, onStartListening: () -> Unit) {
         this.onStopSpeech = onStopSpeech
@@ -61,15 +62,21 @@ class VoiceSessionManager(
      * Immediately interrupts any ongoing TTS playback before entering [LiveVoicePhase.LISTENING].
      */
     fun bargeIn() {
-        val wasSpeaking = _state.value.phase == LiveVoicePhase.SPEAKING
-        onStopSpeech()
-        _state.update { s ->
-            s.copy(
-                phase = if (s.muted) LiveVoicePhase.IDLE else LiveVoicePhase.LISTENING,
-                bargeInCount = if (wasSpeaking) s.bargeInCount + 1 else s.bargeInCount,
-            )
+        if (isBargingIn) return
+        isBargingIn = true
+        try {
+            val wasSpeaking = _state.value.phase == LiveVoicePhase.SPEAKING
+            onStopSpeech()
+            _state.update { s ->
+                s.copy(
+                    phase = if (s.muted) LiveVoicePhase.IDLE else LiveVoicePhase.LISTENING,
+                    bargeInCount = if (wasSpeaking) s.bargeInCount + 1 else s.bargeInCount,
+                )
+            }
+            if (!_state.value.muted) onStartListening()
+        } finally {
+            isBargingIn = false
         }
-        if (!_state.value.muted) onStartListening()
     }
 
     fun beginListening() {
