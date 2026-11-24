@@ -157,13 +157,20 @@ class JuliVoiceCommandCoordinator(
             return ClassifiedVoiceCommand(VoiceCommandType.PAUSE, speechText, cleaned)
         }
 
+        // Bare "Ruko" pauses safely; an explicit "Juli, ruko" retains the stop-command behavior.
+        if (lower == "ruko" && speechText.trim().equals("ruko", ignoreCase = true)) {
+            return ClassifiedVoiceCommand(VoiceCommandType.PAUSE, speechText, cleaned)
+        }
+
         // 2. STOP
         if (STOP_PATTERNS.any { lower == it || lower.startsWith("$it ") || lower.endsWith(" $it") }) {
             return ClassifiedVoiceCommand(VoiceCommandType.STOP, speechText, cleaned)
         }
 
         // 3. RESUME
-        if (RESUME_PATTERNS.any { lower == it || lower.startsWith("$it ") || lower.endsWith(" $it") }) {
+        if (RESUME_PATTERNS.any { lower == it || lower.startsWith("$it ") || lower.endsWith(" $it") } ||
+            Regex("""\bcontinue\b""").containsMatchIn(lower)
+        ) {
             return ClassifiedVoiceCommand(VoiceCommandType.RESUME, speechText, cleaned)
         }
 
