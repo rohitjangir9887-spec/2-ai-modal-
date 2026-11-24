@@ -50,4 +50,27 @@ class AgentUiStateTest {
         assertEquals(emptyList<Pair<Long, String>>(), answers)
         assertEquals(listOf("됐어", "그만", "더 빨리"), steers)
     }
+
+    @Test
+    fun overlayPanelStateMinimizesExpandsTogglesLogsAndNeverHidesUrgentCards() {
+        val ui = AgentUiState(
+            phase = AgentPhase.ACTING,
+            lines = listOf("step 2", "step 3", "step 4"),
+            allLines = listOf("step 1", "step 2", "step 3", "step 4"),
+        )
+        var panel = OverlayPanelState()
+        assertEquals(listOf("step 2", "step 3", "step 4"), panel.visibleLogs(ui))
+        panel = panel.toggleLogsVisible()
+        assertEquals(emptyList<String>(), panel.visibleLogs(ui))
+        panel = panel.toggleLogsVisible()
+        assertEquals(listOf("step 2", "step 3", "step 4"), panel.visibleLogs(ui))
+        panel = panel.toggleLogsExpanded()
+        assertEquals(listOf("step 1", "step 2", "step 3", "step 4"), panel.visibleLogs(ui))
+
+        panel = panel.toggleMinimized()
+        assertEquals(true, panel.isEffectivelyMinimized(null))
+        assertEquals(false, panel.isEffectivelyMinimized(DockCard.Confirm(RiskCategory.MONEY, "Pay ₹500", 1)))
+        assertEquals(false, panel.isEffectivelyMinimized(DockCard.Ask("Which contact?", listOf("A", "B"), 2)))
+        assertEquals(false, panel.isEffectivelyMinimized(DockCard.HandOff("Enter UPI PIN", 3)))
+    }
 }

@@ -77,7 +77,7 @@ class ToolExecutor(
      */
     confirmSend: Boolean = true,
     /** Settings "모델에 보내는 화면 내용: 글자만": false keeps screenshots out of the run (the screen tree still goes). */
-    private val screenshots: Boolean = true,
+    @Volatile private var screenshots: Boolean = true,
     /** Avoid sending a new marked image after simple, accessible scroll/typing steps. */
     private val adaptiveCapture: Boolean = false,
     /**
@@ -266,9 +266,18 @@ class ToolExecutor(
     /** The live screen's hash (see [DeviceController.screenHash]). */
     suspend fun liveScreenHash(): Int? = device.screenHash()
 
-    suspend fun observe(): ToolResult {
+    val screenshotsEnabled: Boolean get() = screenshots
+
+    /** Switches this executor to text-only observation (no screenshots captured or attached). */
+    fun disableScreenshots() {
+        screenshots = false
+    }
+
+    suspend fun observe(): ToolResult = observe(includeScreenshot = screenshots)
+
+    suspend fun observe(includeScreenshot: Boolean): ToolResult {
         markThirdParty()
-        return screenResult("", refresh())
+        return screenResult("", refresh(), includeScreenshot = includeScreenshot)
     }
 
     /**
@@ -350,12 +359,12 @@ class ToolExecutor(
             return when (name) {
                 "list_apps" -> listApps(args.str("query"))
                 "screenshot" -> screenshotTool()
-                "get_screen" -> observe()
+                "get_screen" -> observe(includeScreenshot = screenshots && args.bool("screenshot") != false)
                 "batch" -> batch(args, current ?: return error("no screen"))
                 in BATCH_TOOLS -> {
                     // The settle compares against the live screen the step acted on, when it read one.
                     val result = runStep(name, args, current) ?: return cancelled()
-                    settled(result, name, actedOn ?: current)
+                    settled(result, name, actedOn ?: current, typedArgs = if (name == "type_text") args else null)
                 }
                 // delegate is AgentLoop's (its helper model); it never reaches the executor while offered.
                 else -> error("unknown tool $name")
@@ -629,8 +638,14 @@ class ToolExecutor(
 
     private suspend fun findPackage(name: String): String {
         val apps = device.installedApps()
-        val hit = apps.firstOrNull { it.label.equals(name, ignoreCase = true) }
-            ?: apps.firstOrNull { it.label.contains(name, ignoreCase = true) }
+        val trimmed = name.trim()
+        val hit = apps.firstOrNull { it.label.equals(trimmed, ignoreCase = true) }
+            ?: apps.firstOrNull { it.label.contains(trimmed, ignoreCase = true) }
+            ?: PACKAGE_ALIASES[trimmed.lowercase()]?.firstNotNullOfOrNull { pkg ->
+                apps.firstOrNull { it.packageName.equals(pkg, ignoreCase = true) }
+            }
+            ?: apps.firstOrNull { it.packageName.equals(trimmed, ignoreCase = true) }
+            ?: apps.firstOrNull { it.packageName.contains(trimmed, ignoreCase = true) }
             ?: throw StepFail("app not found: $name")
         return hit.packageName
     }
@@ -695,12 +710,24 @@ class ToolExecutor(
             null
         }
         val moved = relocatedByKind ?: relocatedByViewId ?: return null
-        val b = now.elements.getValue(moved).bounds
+        val movedNode = now.elements.getValue(moved)
+        val b = movedNode.bounds
         val dw = kotlin.math.abs((b.right - b.left) - (node.bounds.right - node.bounds.left))
         val dh = kotlin.math.abs((b.bottom - b.top) - (node.bounds.bottom - node.bounds.top))
         val sameSize = dw <= 8 && dh <= 8
+        // Editable inputs with a unique matching viewId & hint often shift/resize when the IME keyboard
+        // opens or wraps multi-line message drafts. Keep size strict for buttons and non-editable views.
+        val wantIdKey = Triple(vid, node.className, kind.second)
+        val sameUniqueViewId = vid != null &&
+            movedNode.viewId == vid &&
+            seen.elements.keys.count { idKey(it, seen) == wantIdKey } == 1 &&
+            now.elements.keys.count { idKey(it, now) == wantIdKey } == 1
+        val editableKeyboardResize = sameUniqueViewId &&
+            node.editable && movedNode.editable &&
+            node.hint == movedNode.hint &&
+            dw <= 32
         val visible = !b.isEmpty && b.right > 0 && b.bottom > 0 && b.left < now.displayWidth && b.top < now.displayHeight
-        return moved.takeIf { sameSize && visible }
+        return moved.takeIf { (sameSize || editableKeyboardResize) && visible }
     }
 
     private fun idKey(index: Int, screen: CompressedScreen): Triple<String?, String?, String?> {
@@ -1048,18 +1075,63 @@ class ToolExecutor(
         return ScreenRead(tree, seenInterruptions).also { lastRead = it }.screen
     }
 
-    private suspend fun settled(head: String, afterTool: String? = null, baseline: CompressedScreen? = null): ToolResult =
-        screenResult(head, refresh(afterTool, baseline), afterTool)
+    private suspend fun settled(
+        head: String,
+        afterTool: String? = null,
+        baseline: CompressedScreen? = null,
+        typedArgs: JsonObject? = null,
+    ): ToolResult {
+        val fresh = refresh(afterTool, baseline)
+        val note = if (afterTool == "type_text" && typedArgs != null && typedArgs.bool("submit") != true) {
+            typeVerificationNote(typedArgs, baseline, fresh)
+        } else {
+            null
+        }
+        val effectiveHead = if (note != null) "$head\n$note" else head
+        return screenResult(effectiveHead, fresh, afterTool)
+    }
+
+    private fun typeVerificationNote(args: JsonObject, baseline: CompressedScreen?, fresh: CompressedScreen): String? {
+        val wanted = args.str("text") ?: return null
+        val askedIdx = args.int("index")
+        val targetNode = if (baseline != null && askedIdx != null && baseline.elements.containsKey(askedIdx)) {
+            sameElement(askedIdx, baseline, fresh)?.let { it to fresh.elements[it] }
+        } else {
+            null
+        }
+        val matched = targetNode?.let { (idx, node) ->
+            if (node != null && node.editable) idx to node else null
+        } ?: fresh.elements.entries
+            .singleOrNull { (_, n) -> n.editable && !n.text.isNullOrBlank() && n.text == wanted }
+            ?.let { it.key to it.value }
+        if (matched != null) {
+            val (idx, node) = matched
+            val actual = node.text.orEmpty()
+            if (actual == wanted) {
+                return "Verified: field [$idx] displays \"${preview(wanted, 40)}\"."
+            }
+            if (baseline != null && fresh.text != baseline.text) {
+                return "Check field [$idx]: currently displays \"${preview(actual, 40)}\" (expected \"${preview(wanted, 40)}\")."
+            }
+        }
+        return null
+    }
 
     /** A fresh accessibility tree and protected-screen probe still run for EVERY action. */
     private fun needsMarkedImage(afterTool: String?, screen: CompressedScreen): Boolean =
         screenshots && (!adaptiveCapture || afterTool !in setOf("scroll", "type_text") ||
             screen.elements.values.none { it.isActionable })
 
-    private suspend fun screenResult(head: String, screen: CompressedScreen, afterTool: String? = null): ToolResult {
+    private suspend fun screenResult(
+        head: String,
+        screen: CompressedScreen,
+        afterTool: String? = null,
+        includeScreenshot: Boolean = true,
+    ): ToolResult {
         val prefix = if (head.isEmpty()) "# Screen\n" else "$head\n\n# Screen\n"
         return try {
-            val (visible, image) = checkedScreen(screen, if (needsMarkedImage(afterTool, screen)) Capture.MARKED else Capture.PROBE)
+            val capture = if (includeScreenshot && needsMarkedImage(afterTool, screen)) Capture.MARKED else Capture.PROBE
+            val (visible, image) = checkedScreen(screen, capture)
             ToolResult(prefix + visible.text, visible, image, null)
         } catch (e: WithheldScreen) {
             withheldResult(prefix, e.screen)
@@ -1180,7 +1252,7 @@ class ToolExecutor(
         private const val LABEL_PREVIEW_CHARS = 120
         /** A field named as a password or PIN; "암호화폐" (crypto) is not one. */
         private val PASSWORD_FIELD = Regex(
-            """비밀\s*번호|암호(?!화)|패스워드|(?<![a-z])(password|passcode|passwd|pwd|pin)(?![a-z])""",
+            """비밀\s*번호|암호(?!화)|패스워드|(?<![a-z])(password|passcode|passwd|pwd|pin|mpin|tpin|upi[\s_-]*pin|passkey)(?![a-z])|पासवर्ड|पिन|पासकी""",
         )
         private val SPOT_KEYS = listOf("index", "x", "y", "x1", "y1")
         private const val UNSEEN = "you have not seen the screen yet, so element numbers and positions are guesses; choose on the screen below."
@@ -1265,9 +1337,32 @@ class ToolExecutor(
         private val BULK_WORDS_EN = Regex("""(?<![a-z])(?:all|every|everything|each)(?![a-z])""")
 
         private val SENSITIVE_FIELD = Regex(
-            """카드\s*번호|주민\s*(등록)?\s*번호|보안\s*코드|외국인\s*등록\s*번호|(?<![a-z])(cvc|cvv|card[\s_-]*(number|no)|security[\s_-]*code|ssn)(?![a-z])""",
+            """카드\s*번호|주민\s*(등록)?\s*번호|보안\s*코드|외국인\s*등록\s*번호|(?<![a-z])(cvc|cvv|card[\s_-]*(number|no)|security[\s_-]*code|ssn|aadhaar|aadhar|pan[\s_-]*(card|no|number)|ifsc|account[\s_-]*(number|no))(?![a-z])|आधार|पैन(\s*(कार्ड|नंबर))?|खाता\s*संख्या""",
         )
         private val SEARCH_MARKERS = listOf("검색", "찾기", "search", "query", "url_bar", "location_bar", "omnibox")
+        private val PACKAGE_ALIASES: Map<String, List<String>> = mapOf(
+            "whatsapp" to listOf("com.whatsapp", "com.whatsapp.w4b"),
+            "whatsapp business" to listOf("com.whatsapp.w4b", "com.whatsapp"),
+            "와츠앱" to listOf("com.whatsapp", "com.whatsapp.w4b"),
+            "왓츠앱" to listOf("com.whatsapp", "com.whatsapp.w4b"),
+            "gpay" to listOf("com.google.android.apps.nbu.paisa.user"),
+            "google pay" to listOf("com.google.android.apps.nbu.paisa.user"),
+            "phonepe" to listOf("com.phonepe.app"),
+            "paytm" to listOf("net.one97.paytm"),
+            "bhim" to listOf("in.org.npci.upiapp"),
+            "flipkart" to listOf("com.flipkart.android"),
+            "amazon" to listOf("in.amazon.mShop.android.shopping", "com.amazon.mShop.android.shopping"),
+            "zomato" to listOf("com.application.zomato"),
+            "swiggy" to listOf("in.swiggy.android"),
+            "blinkit" to listOf("com.grofers.customerapp"),
+        )
+
+        /** Exposed so [AgentLoop] applies the exact same search-vs-message classification as [ToolExecutor]. */
+        internal fun isSearchFieldNode(node: UiNode): Boolean {
+            val hay = listOfNotNull(node.contentDescription, node.hint, node.viewId, node.className)
+                .joinToString(" ").lowercase()
+            return SEARCH_MARKERS.any { it in hay }
+        }
         private const val MAX_WAIT_MS = 5000
         private const val DEFAULT_SWIPE_MS = 300
 
@@ -1275,6 +1370,7 @@ class ToolExecutor(
         private const val TAP_SLOP_PX = 24.0
         private val GENERIC_AFFIRMATIVES = listOf(
             "확인", "예", "네", "계속", "동의", "허용", "OK", "Yes", "Continue", "Confirm", "Done", "Accept", "Allow",
+            "हाँ", "हां", "ठीक है", "जारी रखें",
         )
         private const val INTERRUPTED = "the user used voice input, so the screen may have changed and element numbers are stale."
         private val DIRECTIONS = setOf("up", "down", "left", "right")

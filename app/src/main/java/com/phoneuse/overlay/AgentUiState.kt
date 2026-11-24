@@ -38,6 +38,35 @@ fun submitDockText(
     return if (card is DockCard.Ask) answer(card.id, t) else steer(t)
 }
 
+enum class OverlayLogsMode { SUMMARY_3, EXPANDED, HIDDEN }
+
+/**
+ * Pure panel controls state for the floating overlay dock:
+ * users can minimize/expand controls and show/hide/expand logs while keeping urgent confirmations visible.
+ */
+data class OverlayPanelState(
+    val minimized: Boolean = false,
+    val logsMode: OverlayLogsMode = OverlayLogsMode.SUMMARY_3,
+) {
+    fun toggleMinimized(): OverlayPanelState = copy(minimized = !minimized)
+
+    fun toggleLogsVisible(): OverlayPanelState = copy(
+        logsMode = if (logsMode == OverlayLogsMode.HIDDEN) OverlayLogsMode.SUMMARY_3 else OverlayLogsMode.HIDDEN,
+    )
+
+    fun toggleLogsExpanded(): OverlayPanelState = copy(
+        logsMode = if (logsMode == OverlayLogsMode.EXPANDED) OverlayLogsMode.SUMMARY_3 else OverlayLogsMode.EXPANDED,
+    )
+
+    fun isEffectivelyMinimized(card: DockCard?): Boolean = minimized && card == null
+
+    fun visibleLogs(state: AgentUiState): List<String> = when (logsMode) {
+        OverlayLogsMode.HIDDEN -> emptyList()
+        OverlayLogsMode.EXPANDED -> state.allLines
+        OverlayLogsMode.SUMMARY_3 -> state.lines.takeLast(3)
+    }
+}
+
 fun RiskCategory.koreanName(): String = when (this) {
 
     RiskCategory.MONEY -> tr("Payment", "결제")

@@ -103,8 +103,8 @@ object NvidiaOrchestrator {
         registry.updateDiscoveredCatalog(listed)
         val probeReports = mutableListOf<NimProbeReport>()
         if (probeDefaultRoles) {
-            val targets = registry.allAssignments()
-                .flatMap { listOf(it.primaryModel, it.backupModel) }
+            val targets = (registry.allAssignments()
+                .flatMap { listOf(it.primaryModel, it.backupModel) } + NvidiaModelRegistry.VISION_BACKUP)
                 .distinct()
                 .filter { id -> listed.isEmpty() || id in listed }
             for (modelId in targets) {
@@ -114,13 +114,16 @@ object NvidiaOrchestrator {
                     modelId = modelId,
                     http = http,
                     testTools = true,
-                    testVision = cap.supportsVision,
+                    testVision = cap.supportsVision && !cap.visionPinnedOff,
+                    testStreaming = true,
                 )
                 registry.recordProbe(
                     modelId = modelId,
                     chatOk = report.chatOk,
                     toolsOk = report.toolsOk,
                     visionOk = report.visionOk,
+                    streamingOk = report.streamingOk,
+                    unsupportedParams = report.unsupportedParams,
                 )
                 health.markProbeResult(
                     modelId = modelId,

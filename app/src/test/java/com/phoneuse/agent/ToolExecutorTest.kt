@@ -1712,4 +1712,19 @@ class ToolExecutorTest {
         assertEquals(2, ToolExecutor.findLabel("최근", screen))
         assertNull(ToolExecutor.findLabel("장바구니", screen))
     }
+
+    @Test fun indianSensitiveAndPasswordFieldsRequireUserHandoff() = runTest {
+        for (label in listOf("Aadhaar Number", "PAN Card Number", "IFSC Code", "UPI PIN", "आधार नंबर", "पासकी")) {
+            val field = UiNode(
+                windowId = 0, path = listOf(1), className = "android.widget.EditText", text = null,
+                contentDescription = null, hint = label, viewId = null, bounds = Bounds(100, 100, 900, 160),
+                clickable = true, editable = true,
+            )
+            val s = ScreenSnapshot("com.example.bank", 1080, 2400, listOf(field, button("Next", 400)))
+            val (dev, _, ex) = setup(s)
+            val r = ex.execute(call("type_text", """{"index":1,"text":"123456"}"""), screenOf(s))
+            assertTrue("$label: ${r.output}", r.output.startsWith("ERROR") && "hand_to_user" in r.output)
+            assertTrue(dev.calls.none { it.startsWith("setText") })
+        }
+    }
 }

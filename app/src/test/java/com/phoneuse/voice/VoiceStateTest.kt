@@ -114,6 +114,13 @@ class VoiceStateTest {
         assertEquals("ja-JP", speechLanguageTag(VoiceLanguage.SYSTEM, Locale.JAPAN))
     }
 
+    @Test fun bilingualSpeechLanguageHintsPreferIndianAndHindiTags() {
+        assertEquals(listOf("en-IN", "hi-IN"), speechLanguageHints(VoiceLanguage.HINGLISH, Locale.US))
+        assertEquals(listOf("hi-IN", "en-IN"), speechLanguageHints(VoiceLanguage.HINDI, Locale.US))
+        assertEquals(listOf("en-IN", "hi-IN"), speechLanguageHints(VoiceLanguage.SYSTEM, Locale("en", "IN")))
+        assertEquals(listOf("hi-IN", "en-IN"), speechLanguageHints(VoiceLanguage.SYSTEM, Locale("hi", "IN")))
+    }
+
     @Test fun googleRecognizerIsNamedExplicitlyNeverOurStub() {
         val own = "com.phoneuse" to "com.phoneuse.assist.StubRecognitionService"
         val tts = "com.google.android.tts" to "com.google.android.apps.speech.tts.googletts.service.GoogleTTSRecognitionService"

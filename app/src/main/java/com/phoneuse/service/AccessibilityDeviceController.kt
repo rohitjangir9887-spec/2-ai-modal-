@@ -454,7 +454,21 @@ class AccessibilityDeviceController(
             putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text)
         }
         val live = reader.resolve(node)
-        if (live != null && live.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)) return true
+        if (live != null) {
+            if (live.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)) {
+                live.refresh()
+                val actual = live.text?.toString()
+                if (actual == text || (text.isEmpty() && actual.isNullOrEmpty())) return true
+            }
+            // Some chat composers (e.g. WhatsApp / OEM EditTexts) ignore ACTION_SET_TEXT until focused.
+            live.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
+            delay(60)
+            if (live.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)) {
+                live.refresh()
+                val actual = live.text?.toString()
+                if (actual == text || (text.isEmpty() && actual.isNullOrEmpty())) return true
+            }
+        }
         // Fallback: tap the field and type into whatever took input focus, if it is safe to.
         val d = displayBounds(s)
         val b = node.bounds.clippedTo(d.width(), d.height())

@@ -63,9 +63,10 @@ class SqliteMemoryStore(private val db: ChatDb) : MemoryStore, AppTipStore {
         MemorySecrets.check(memory.text)
         return write { w ->
             val now = System.currentTimeMillis()
-            val same = w.rawQuery(
+            val exact = w.rawQuery(
                 "SELECT id, confidence, date, due FROM memories WHERE lower(text) = lower(?) LIMIT 1", arrayOf(text),
             ).use { c -> if (c.moveToFirst()) Triple(c.getLong(0), c.getString(1), c.getString(2) to c.getString(3)) else null }
+            val same = exact ?: findNearDuplicate(w, text)
             if (same != null) {
                 // The stored kind stays (the user may have chosen it); only missing dates are filled.
                 val (id, confidence, dates) = same
@@ -109,6 +110,7 @@ class SqliteMemoryStore(private val db: ChatDb) : MemoryStore, AppTipStore {
             val other = w.rawQuery(
                 "SELECT id FROM memories WHERE lower(text) = lower(?) AND id != ? LIMIT 1", arrayOf(clean, id.toString()),
             ).use { c -> if (c.moveToFirst()) c.getLong(0) else null }
+                ?: findNearDuplicateId(w, clean, excludeId = id)
             // An edit is the user's word: it confirms the memory. Editing into another memory's text merges them.
             val values = ContentValues().apply {
                 put("kind", kind.name)
@@ -200,6 +202,48 @@ class SqliteMemoryStore(private val db: ChatDb) : MemoryStore, AppTipStore {
         date = c.getString(8),
         due = c.getString(9),
     )
+
+    private fun findNearDuplicate(w: SQLiteDatabase, text: String): Triple<Long, String, Pair<String?, String?>>? {
+        val target = MemoryStore.dedupKey(text)
+        if (target.isEmpty()) return null
+        val match = MemoryText.ftsQuery(text)
+        val cursor = if (match != null) {
+            w.rawQuery(
+                "SELECT id, text, confidence, date, due FROM memories WHERE id IN (SELECT docid FROM memories_fts WHERE memories_fts MATCH ?) LIMIT 50",
+                arrayOf(match),
+            )
+        } else {
+            w.rawQuery("SELECT id, text, confidence, date, due FROM memories ORDER BY updated_at DESC LIMIT 50", null)
+        }
+        return cursor.use { c ->
+            while (c.moveToNext()) {
+                if (MemoryStore.dedupKey(c.getString(1)) == target) {
+                    return@use Triple(c.getLong(0), c.getString(2), c.getString(3) to c.getString(4))
+                }
+            }
+            null
+        }
+    }
+
+    private fun findNearDuplicateId(w: SQLiteDatabase, text: String, excludeId: Long): Long? {
+        val target = MemoryStore.dedupKey(text)
+        if (target.isEmpty()) return null
+        val match = MemoryText.ftsQuery(text)
+        val cursor = if (match != null) {
+            w.rawQuery(
+                "SELECT id, text FROM memories WHERE id != ? AND id IN (SELECT docid FROM memories_fts WHERE memories_fts MATCH ?) LIMIT 50",
+                arrayOf(excludeId.toString(), match),
+            )
+        } else {
+            w.rawQuery("SELECT id, text FROM memories WHERE id != ? ORDER BY updated_at DESC LIMIT 50", arrayOf(excludeId.toString()))
+        }
+        return cursor.use { c ->
+            while (c.moveToNext()) {
+                if (MemoryStore.dedupKey(c.getString(1)) == target) return@use c.getLong(0)
+            }
+            null
+        }
+    }
 
     private suspend fun <T> write(block: (SQLiteDatabase) -> T): T = withContext(Dispatchers.IO) {
         val w = db.writable

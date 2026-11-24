@@ -130,4 +130,21 @@ class TreeCompressorTest {
         assertTrue(carousel.text.contains("more-right"))
         assertFalse(TreeCompressor.compress(snap(list(more = false, horizontal = false))).listContinues)
     }
+
+    @Test fun passwordNodeMasksNonEmptyTextAndSkipsChildren() {
+        val secretChild = node(text = "nestedSecret99", cls = "android.widget.TextView")
+        val pw = node(
+            text = "mySecret123",
+            cls = "android.widget.EditText",
+            editable = true,
+            password = true,
+            children = listOf(secretChild),
+        )
+        val c = TreeCompressor.compress(snap(pw))
+        assertFalse(c.text.contains("mySecret123"))
+        assertFalse(c.text.contains("nestedSecret99"))
+        assertTrue(c.text.contains("\"••••••••\""))
+        assertEquals("••••••••", c.labels[1])
+        assertEquals("••••••••", c.fullLabels[1])
+    }
 }

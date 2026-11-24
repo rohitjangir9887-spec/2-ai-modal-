@@ -15,4 +15,11 @@ class SmsParsersTest {
         assertEquals("12,500원 결제 2026년", SmsParsers.maskCodes("12,500원 결제 2026년"))
         assertEquals("주문번호 1234567", SmsParsers.maskCodes("주문번호 1234567"))
     }
+
+    @Test fun masksHindiAndDevanagariOtpsWhilePreservingInrAmounts() {
+        assertEquals("आपका ओटीपी ●●●●●● है", SmsParsers.maskCodes("आपका ओटीपी 482913 है"))
+        assertEquals("आपका ओटीपी ●●●●●● है", SmsParsers.maskCodes("आपका ओटीपी ४८२९१३ है"))
+        assertEquals("₹2500 के लिए ओटीपी ●●●●●●", SmsParsers.maskCodes("₹2500 के लिए ओटीपी 998877"))
+        assertEquals("₹1,500 paid", SmsParsers.maskCodes("₹1,500 paid"))
+    }
 }

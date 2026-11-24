@@ -93,12 +93,14 @@ class ModelFallbackManager(
                     if (e.afterOutput) {
                         throw lastException
                     }
-                    if (!e.retryable && e.status != 404 && e.status != 429 && e.status !in 500..599) {
-                        // Bad model/request for this specific model -> fail over to backup immediately.
+                    if (ModelErrorClassifier.isMultimodalRejection(e) || ModelErrorClassifier.isModelUnavailable(e) ||
+                        e.status == 404 || e.status == 422
+                    ) {
+                        // Model missing, disabled, or lacks multimodal capability -> skip straight to next candidate.
                         break
                     }
-                    if (e.status == 404 || e.status == 422) {
-                        // Model missing or disabled on this account -> skip straight to next candidate.
+                    if (!e.retryable && e.status != 404 && e.status != 429 && e.status !in 500..599) {
+                        // Bad model/request for this specific model -> fail over to backup immediately.
                         break
                     }
 

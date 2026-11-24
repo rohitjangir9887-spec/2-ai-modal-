@@ -51,7 +51,7 @@ object RiskGuard {
     )
     private val transferWord = Regex("""(?<![a-z])transfer(?:s|ring)?(?![a-z])""")
     private val transferContext = Regex(
-        """account|money|funds?|balance|bank|wire|계좌|잔액|통장|은행|口座|账户|帳戶|账号""",
+        """account|money|funds?|balance|bank|wire|upi|vpa|ifsc|imps|neft|rtgs|यूपीआई|खाता|बैंक|계좌|잔액|통장|은행|口座|账户|帳戶|账号""",
     )
 
     /** "Your orders", "Order history/status/details", "Sort order": browsing, not buying. */
@@ -67,38 +67,39 @@ object RiskGuard {
         """구매\s*(후기|평|자|수|율|건|횟수|많은|순|만족|인증|내역|목록)|[0-9][0-9,.]*\s*[만천백]?\+?\s*(명|개|건|회)?\s*(이상\s*|이\s*)?구매(?!\s*하)|구매한|구매하신|주문\s*(내역|목록|수|건|조회)""",
     )
     private val paidSubscribe = Keywords(
-        listOf("구독", "충전", "신청하기", "チャージ", "購読", "订阅", "訂閱"),
-        listOf("subscribe"),
+        listOf("구독", "충전", "신청하기", "यूपीआई", "チャージ", "購読", "订阅", "訂閱"),
+        listOf("subscribe", "upi"),
     )
 
-    /** A price: "₩4,900", "$0.99", "4,900원", "1,200円", with an optional "/월". */
-    private const val AMOUNT = """(?:[₩$€¥￥£]\s*[0-9][0-9,.]*|[0-9][0-9,.]*\s*(?:원|₩|\$|€|¥|￥|円|元|usd|krw|eur|jpy))"""
+    /** A price: "₩4,900", "₹499", "Rs. 1,200", "$0.99", "4,900원", "1,200円", with an optional "/월". */
+    private const val AMOUNT =
+        """(?:[₩$€¥￥£₹]\s*[0-9][0-9,.]*|(?:rs\.?|inr)\s*[0-9][0-9,.]*|[0-9][0-9,.]*\s*(?:원|₩|\$|€|¥|￥|£|₹|円|元|usd|krw|eur|jpy|inr|rs\.?|rupees?))"""
     private val amount = Regex(AMOUNT)
     private val priceOnly = Regex("""^\s*""" + AMOUNT + """(?:\s*/\s*\S{1,6})?\s*$""")
 
     /** A bare "확인"/"OK" in text that also names a sum is the confirm button of a payment dialog. */
     private val affirmative = Regex(
-        """(?<![가-힣a-z])(?:확인|동의|예|네|계속|ok|yes|confirm|continue|accept|done|はい|同意|确认|確認|确定|確定)(?![가-힣a-z])""",
+        """(?<![가-힣a-z])(?:확인|동의|예|네|계속|ok|yes|confirm|continue|accept|done|はい|同意|确认|確認|确定|確定|हाँ|हां|ठीक है|जारी रखें|आगे बढ़ें)(?![가-힣a-z])""",
     )
 
     private val security = Keywords(
         listOf(
-            "पासवर्ड", "लॉगिन", "लॉग इन", "साइन इन", "ओटीपी", "यूपीआई पिन",
+            "पासवर्ड", "लॉगिन", "लॉग इन", "साइन इन", "ओटीपी", "यूपीआई पिन", "पासकी", "रिकवरी कोड", "आधार",
             "비밀번호", "암호", "로그인", "로그아웃", "인증", "탈퇴", "기기 관리자", "기기관리자",
             "パスワード", "ログイン", "ログアウト", "サインイン", "サインアウト", "認証", "退会", "暗証番号", "デバイス管理",
             "密码", "密碼", "登录", "登入", "登出", "注销", "註銷", "验证", "驗證", "设备管理", "裝置管理",
         ),
-        listOf("password", "sign in", "log in", "sign out", "log out", "device admin"),
+        listOf("password", "sign in", "log in", "sign out", "log out", "device admin", "passkey", "upi pin", "mpin", "tpin", "recovery code", "aadhaar"),
     )
     private val securityNoise = Regex("""인증\s*샷|정품\s*인증""")
 
     /** "허용"/"권한" words: security only in system surfaces ([grantPackage]) or when granting account/app access. */
     private val grant = Keywords(
-        listOf("허용", "권한", "許可", "権限", "允许", "允許", "权限", "權限"),
+        listOf("허용", "권한", "अनुमति", "許可", "権限", "允许", "允許", "权限", "權限"),
         listOf("allow", "permission"),
     )
     private val accessGrant = Keywords(
-        listOf("접근", "액세스", "엑세스", "アクセス", "访问", "訪問", "存取"),
+        listOf("접근", "액세스", "엑세스", "एक्सेस", "アクセス", "访问", "訪問", "存取"),
         listOf("access", "grant"),
     )
 
@@ -106,6 +107,7 @@ object RiskGuard {
     private val refuseGrant = Keywords(
         listOf(
             "허용 안", "허용안", "허용하지", "거부",
+            "अनुमति न दें", "अस्वीकार", "मना करें", "अभी नहीं",
             "許可しない", "許可しません", "拒否", "今はしない",
             "不允许", "不允許", "拒绝", "拒絕", "禁止", "暂不", "暫不",
         ),
@@ -178,12 +180,12 @@ object RiskGuard {
     private val strongSecurity = Keywords(
         listOf(
             "लॉगिन", "लॉग इन", "साइन इन",
-            "पासवर्ड", "यूपीआई पिन", "ओटीपी",
+            "पासवर्ड", "यूपीआई पिन", "ओटीपी", "पासकी", "रिकवरी कोड", "आधार",
             "비밀번호", "탈퇴", "기기 관리자", "기기관리자",
             "パスワード", "退会", "暗証番号", "デバイス管理",
             "密码", "密碼", "注销", "註銷", "设备管理", "裝置管理",
         ),
-        listOf("password", "sign in", "log in", "device admin"),
+        listOf("password", "sign in", "log in", "device admin", "passkey", "upi pin", "mpin", "tpin", "recovery code", "aadhaar"),
     )
     private val strongDelete = Keywords(
         listOf("डिलीट", "मिटाएं",
@@ -216,7 +218,7 @@ object RiskGuard {
     /** Whether any of [texts] names a deletion that is permanent or takes many items ([irreversibleDelete]). */
     fun irreversible(vararg texts: String?): Boolean =
         texts.any { t -> t != null && irreversibleDelete.matches(t.lowercase()) }
-    private val strongSend = Keywords(listOf("전송", "보내기", "送信", "发送", "發送", "傳送"), listOf("send"))
+    private val strongSend = Keywords(listOf("भेजें", "भेजो", "전송", "보내기", "送信", "发送", "發送", "傳送"), listOf("send"))
 
     private val permissionControllers = setOf(
         "com.google.android.permissioncontroller",
@@ -242,6 +244,19 @@ object RiskGuard {
         "com.wooribank.smart.npib", // Woori
         "com.kebhana.hanapush", // Hana
         "com.nh.smart.banking", // NH
+        // Indian UPI, wallet and banking apps
+        "com.google.android.apps.nbu.paisa.user", // Google Pay (Tez)
+        "com.phonepe.app", // PhonePe
+        "net.one97.paytm", // Paytm
+        "in.org.npci.upiapp", // BHIM UPI
+        "com.dreamplug.androidapp", // CRED
+        "com.csam.icici.bank.imobile", // iMobile Pay (ICICI)
+        "com.sbi.lotusintouch", // YONO SBI
+        "com.snapwork.hdfc", // HDFC Bank
+        "com.axis.mobile", // Axis Mobile
+        "com.kotak.bank.mobile", // Kotak Bank
+        "com.mobikwik_new", // MobiKwik
+        "com.freecharge.android", // Freecharge
     )
 
     /** Social apps where a bare "공유"/"Share" is the final post button, not a share-sheet opener. */

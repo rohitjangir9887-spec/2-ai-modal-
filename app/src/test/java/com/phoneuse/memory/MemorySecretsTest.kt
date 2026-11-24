@@ -30,9 +30,14 @@ class MemorySecretsTest {
     @Test fun refusesIndianIdentityDocumentsAndHindiSecrets() {
         for (text in listOf(
             "Aadhaar 2345 6789 0123",
+            "आधार २४३५ ६७८९ ०१२३",
             "PAN ABCDE1234F",
+            "IFSC SBIN0001234 account 123456789012",
+            "nvapi-abcdefghijklmnop",
             "ओटीपी: 983471",
             "यूपीआई पिन 1234",
+            "mera upi pin 1234",
+            "otp hai 5678",
             "मेरे पासवर्ड: abc12345",
         )) {
             assertNotNull(text, MemorySecrets.refusal(text))

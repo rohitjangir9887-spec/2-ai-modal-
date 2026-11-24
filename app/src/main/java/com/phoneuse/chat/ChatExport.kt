@@ -48,9 +48,13 @@ object ChatExport {
             add(
                 buildJsonObject {
                     put("role", m.role.name.lowercase())
-                    put("text", m.text)
+                    put("text", com.phoneuse.security.SecretRedactor.redact(m.text))
                     put("created_at", Instant.ofEpochMilli(m.createdAt).toString())
-                    if (m.steps.isNotEmpty()) putJsonArray("steps") { m.steps.forEach { add(kotlinx.serialization.json.JsonPrimitive(it.text)) } }
+                    if (m.steps.isNotEmpty()) {
+                        putJsonArray("steps") {
+                            m.steps.forEach { add(kotlinx.serialization.json.JsonPrimitive(com.phoneuse.security.SecretRedactor.redact(it.text))) }
+                        }
+                    }
                     val names = m.attachments.mapNotNull { it.name }
                     if (names.isNotEmpty()) putJsonArray("attachments") { names.forEach { add(kotlinx.serialization.json.JsonPrimitive(it)) } }
                 },

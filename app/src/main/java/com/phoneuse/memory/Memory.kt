@@ -111,6 +111,11 @@ interface MemoryStore {
 
         fun clean(text: String): String = text.replace(Regex("\\s+"), " ").trim().take(MAX_TEXT)
 
-        fun sameText(a: String, b: String): Boolean = clean(a).equals(clean(b), ignoreCase = true)
+        fun dedupKey(text: String): String = clean(text)
+            .trimEnd('.', '!', '?', '।', ',', ';', ':')
+            .trim()
+            .lowercase()
+
+        fun sameText(a: String, b: String): Boolean = dedupKey(a) == dedupKey(b)
     }
 }

@@ -29,4 +29,20 @@ class ChatExportTest {
     @Test fun fileNameHasTheTime() {
         assertEquals("phone-use-chats-19700101-0900.json", ChatExport.fileName(0L, ZoneId.of("Asia/Seoul")))
     }
+
+    @Test fun redactsSecretsAndIndianIdsInExport() {
+        val c = Conversation(4, "KYC", 1_000L)
+        val messages = listOf(
+            ChatMessage(
+                1, 4, MessageRole.USER,
+                "Key nvapi-1234567890abcdef and Aadhaar 2345 6789 0123",
+                listOf(StepLog("Bearer abcdefgh12345678")),
+                1_000L,
+            ),
+        )
+        val out = ChatExport.json(listOf(c to messages), 2_000L)
+        assertFalse(out.contains("nvapi-1234567890abcdef"))
+        assertFalse(out.contains("2345 6789 0123"))
+        assertFalse(out.contains("abcdefgh12345678"))
+    }
 }

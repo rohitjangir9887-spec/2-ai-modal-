@@ -81,7 +81,7 @@ class GoogleTools(private val api: GoogleApi) {
         when (name) {
             "gmail_search" -> {
                 val found = api.searchMail(args.need("q"))
-                ok(if (found.isEmpty()) "메일 없음" else found.joinToString("\n") { "[${it.id}] ${it.date} · ${it.from} · ${it.subject} — ${it.snippet}" })
+                ok(if (found.isEmpty()) tr("No matching emails", "메일 없음") else found.joinToString("\n") { "[${it.id}] ${it.date} · ${it.from} · ${it.subject} — ${it.snippet}" })
             }
             "gmail_read" -> {
                 val m = api.readMail(args.need("id"))
@@ -91,10 +91,10 @@ class GoogleTools(private val api: GoogleApi) {
             "gmail_send" -> send(args.need("to"), args.str("subject").orEmpty(), args.need("body"), gate)
             "drive_search" -> {
                 val files = api.searchDrive(args.need("q"))
-                ok(if (files.isEmpty()) "파일 없음" else files.joinToString("\n") { "[${it.id}] ${it.name} (${it.mimeType.substringAfterLast('.')}${it.modified?.let { m -> ", $m" }.orEmpty()})" })
+                ok(if (files.isEmpty()) tr("No matching files", "파일 없음") else files.joinToString("\n") { "[${it.id}] ${it.name} (${it.mimeType.substringAfterLast('.')}${it.modified?.let { m -> ", $m" }.orEmpty()})" })
             }
             "drive_read_text" -> {
-                val (fileName, text) = api.readDriveText(args.need("id")) ?: return fail("텍스트로 읽을 수 없는 파일이에요")
+                val (fileName, text) = api.readDriveText(args.need("id")) ?: return fail(tr("This file cannot be read as text", "텍스트로 읽을 수 없는 파일이에요"))
                 ok("# $fileName\n$text")
             }
             else -> fail("unknown tool $name")
@@ -114,7 +114,10 @@ class GoogleTools(private val api: GoogleApi) {
             while (drafts.size > MAX_DRAFTS) drafts.remove(drafts.keys.first())
         }
         return ToolResult(
-            "OK: Gmail에 초안을 저장했어요 (draft_id $id). 초안 카드를 보여줬어요. 보내려면 사용자가 원할 때 gmail_send를 같은 내용으로 호출하세요.",
+            tr(
+                "OK: Saved draft in Gmail (draft_id $id) and showed the draft card. Call gmail_send with the same details when the user wants to send it.",
+                "OK: Gmail에 초안을 저장했어요 (draft_id $id). 초안 카드를 보여줬어요. 보내려면 사용자가 원할 때 gmail_send를 같은 내용으로 호출하세요.",
+            ),
             null, null, null,
             card = DraftCard("email", to, subject.ifBlank { null }, body)
         )
@@ -134,7 +137,7 @@ class GoogleTools(private val api: GoogleApi) {
         val key = Triple(to, subject, body)
         val draftId = synchronized(drafts) { drafts.remove(key) } ?: api.createDraft(to, subject, body)
         val messageId = api.sendDraft(draftId)
-        return ok("OK: 메일을 보냈어요${messageId?.let { " (message_id $it)" }.orEmpty()}")
+        return ok(tr("OK: Email sent${messageId?.let { " (message_id $it)" }.orEmpty()}", "OK: 메일을 보냈어요${messageId?.let { " (message_id $it)" }.orEmpty()}"))
     }
 
     private fun ok(output: String) = ToolResult(output, null, null, null)

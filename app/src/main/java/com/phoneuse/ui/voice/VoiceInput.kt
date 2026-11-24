@@ -34,6 +34,7 @@ import com.phoneuse.voice.VoiceError
 import com.phoneuse.voice.VoicePhase
 import com.phoneuse.voice.VoiceRecognizer
 import com.phoneuse.voice.VoiceState
+import com.phoneuse.voice.speechLanguageHints
 import com.phoneuse.voice.speechLanguageTag
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -150,20 +151,23 @@ fun rememberVoiceInput(
     val listen = {
         pending[0]?.cancel()
         pending[0] = scope.launch {
-            val language = speechLanguageTag(AppGraph.voiceLanguageNow(), Locale.getDefault())
+            val choice = AppGraph.voiceLanguageNow()
+            val locale = Locale.getDefault()
+            val hints = speechLanguageHints(choice, locale)
+            val language = hints.firstOrNull() ?: speechLanguageTag(choice, locale)
             pending[0] = null
             // A permission dialog or language read can outlive its input or its dock session.
             if (!latestCanStart()) return@launch
             if (recognizer.engine == VoiceEngine.Dialog) {
                 try {
                     latestExternalUi(true)
-                    dialog.launch(dialogIntent(language))
+                    dialog.launch(dialogIntent(language, hints))
                 } catch (e: RuntimeException) {
                     latestExternalUi(false)
                     recognizer.fail(VoiceError.UNAVAILABLE)
                 }
             } else {
-                recognizer.start(language)
+                recognizer.start(language, hints)
             }
         }
     }
@@ -225,8 +229,14 @@ fun rememberDraftVoiceInput(onAppendSpeech: (String) -> Unit, enabled: Boolean =
     return voice
 }
 
-private fun dialogIntent(language: String): Intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
+private fun dialogIntent(language: String, hints: List<String> = listOf(language)): Intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
     .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
     .putExtra(RecognizerIntent.EXTRA_LANGUAGE, language)
     .putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, language)
     .putExtra(RecognizerIntent.EXTRA_PROMPT, tr("Speak now", "말해 주세요"))
+    .apply {
+        val distinctHints = hints.filter { it.isNotBlank() }.distinct()
+        if (distinctHints.size > 1) {
+            putStringArrayListExtra("android.speech.extra.SUPPORTED_LANGUAGES", ArrayList(distinctHints))
+        }
+    }

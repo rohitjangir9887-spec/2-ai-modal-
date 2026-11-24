@@ -269,4 +269,23 @@ class RiskGuardTest {
         assertEquals(RiskCategory.MONEY, RiskGuard.classify("주문하기 19,900원", pkg))
         assertEquals(RiskCategory.MONEY, RiskGuard.classify("1만명 이상 구매 · 결제하기", pkg))
     }
+
+    @Test fun indianCurrencyUpiAndHindiConfirmationLabels() {
+        assertEquals(RiskCategory.MONEY, RiskGuard.classify("Pay ₹499", null))
+        assertEquals(RiskCategory.MONEY, RiskGuard.classify("Send Rs. 1,200", null))
+        assertEquals(RiskCategory.MONEY, RiskGuard.classify("INR 500", null))
+        for (pkg in listOf(
+            "com.phonepe.app",
+            "com.google.android.apps.nbu.paisa.user",
+            "net.one97.paytm",
+            "in.org.npci.upiapp",
+        )) {
+            assertEquals(pkg, RiskCategory.MONEY, RiskGuard.classify("Send", pkg))
+            assertEquals(pkg, RiskCategory.MONEY, RiskGuard.classify("Continue ₹500", pkg))
+            assertEquals(pkg, RiskCategory.MONEY, RiskGuard.classify("यूपीआई", pkg))
+        }
+        assertEquals(RiskCategory.SEND, RiskGuard.classify("भेजें", null))
+        assertEquals(RiskCategory.MONEY, RiskGuard.classify("हाँ ₹500", null))
+        assertNull(RiskGuard.classify("अनुमति न दें", "com.google.android.permissioncontroller"))
+    }
 }

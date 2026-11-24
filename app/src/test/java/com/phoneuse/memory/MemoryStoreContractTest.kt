@@ -46,6 +46,17 @@ abstract class MemoryStoreContractTest {
         assertEquals(MemoryKind.PLACE, store.get(a)!!.kind)
     }
 
+    @Test fun nearDuplicatePunctuationAndSpacingMergesInsteadOfDuplicating() = runTest {
+        val first = store.add(NewMemory("I prefer INR pricing and bullet format.", MemoryKind.HABIT, Confidence.GUESS))
+        assertTrue(first.created)
+        clock += 5
+        val dup = store.add(NewMemory("  i   prefer inr pricing and bullet format  ", MemoryKind.ME, Confidence.SURE))
+        assertEquals(first.id, dup.id)
+        assertFalse(dup.created)
+        assertEquals(1, store.observe().first().size)
+        assertEquals(Confidence.SURE, store.get(first.id)!!.confidence)
+    }
+
     @Test fun updateConfirmAndDelete() = runTest {
         val id = store.add(NewMemory("선물 예산은 보통 10만 원 안쪽", MemoryKind.HABIT, Confidence.GUESS)).id
         assertTrue(store.update(id, "선물 예산은 15만 원 안쪽", MemoryKind.HABIT))

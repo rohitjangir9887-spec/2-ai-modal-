@@ -115,9 +115,35 @@ fun voiceErrorOf(code: Int): VoiceError = when (code) {
 
 /**
  * The recognition language: Settings "음성으로 말하기" (the same choice the old system dialog used), or the
- * device language when it is set to follow the device.
+ * device language when it is set to follow the device (falling back to Indian English for `IN` when English is selected).
  */
-fun speechLanguageTag(setting: VoiceLanguage, device: Locale): String = setting.tag ?: device.toLanguageTag()
+fun speechLanguageTag(setting: VoiceLanguage, device: Locale): String = setting.tag ?: when {
+    device.language == "hi" && device.country.isEmpty() -> "hi-IN"
+    else -> device.toLanguageTag()
+}
+
+/**
+ * Preferred BCP-47 speech recognition language hints (primary first, then bilingual companions such as
+ * Hinglish + Hindi for Indian speakers so mixed Hindi/English voice commands work naturally).
+ */
+fun speechLanguageHints(
+    setting: VoiceLanguage,
+    device: Locale,
+    region: String = com.phoneuse.i18n.Region.country,
+): List<String> = when (setting) {
+    VoiceLanguage.HINGLISH -> listOf("en-IN", "hi-IN")
+    VoiceLanguage.HINDI -> listOf("hi-IN", "en-IN")
+    VoiceLanguage.KOREAN -> listOf("ko-KR")
+    VoiceLanguage.ENGLISH -> if (region.equals("IN", ignoreCase = true)) listOf("en-IN", "hi-IN") else listOf("en-US")
+    VoiceLanguage.SYSTEM -> {
+        val effectiveCountry = device.country.takeIf { it.isNotBlank() } ?: region
+        when {
+            device.language == "hi" -> listOf("hi-IN", "en-IN")
+            device.language == "en" && effectiveCountry.equals("IN", ignoreCase = true) -> listOf("en-IN", "hi-IN")
+            else -> listOf(speechLanguageTag(setting, device))
+        }
+    }
+}
 
 /** How long a start waits for the saved dictation language before it follows the device. */
 const val VOICE_READ_MS = 1_000L

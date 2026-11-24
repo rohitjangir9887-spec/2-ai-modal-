@@ -98,7 +98,10 @@ internal class MemoryModule(
                     }
                     if (!store.delete(id)) return fail("no memory [$id]")
                     ToolResult(
-                        "OK: 기억 [$id]을 지웠어요. 채팅에 되돌리기 버튼과 함께 보여요.", null, null, null,
+                        tr(
+                            "OK: Forgot memory [$id]. Shown in chat with an Undo button.",
+                            "OK: 기억 [$id]을 지웠어요. 채팅에 되돌리기 버튼과 함께 보여요.",
+                        ), null, null, null,
                         forgotten = ForgottenMemory(
                             memory.id, memory.text, memory.kind.name, memory.confidence.name,
                             memory.date, memory.due, memory.conversationId, memory.origin,
@@ -110,7 +113,7 @@ internal class MemoryModule(
                     val found = a.store!!.search(args.str("query") ?: throw IllegalArgumentException("query required"), RECALL_LIMIT * 3)
                         .filter { it.confidence == Confidence.SURE }
                         .take(RECALL_LIMIT)
-                    if (found.isEmpty()) ok("기억 없음") else ok(found.joinToString("\n") { MemoryRanker.line(it) })
+                    if (found.isEmpty()) ok(tr("No matching memories", "기억 없음")) else ok(found.joinToString("\n") { MemoryRanker.line(it) })
                 }
                 "search_conversations" -> {
                     val query = args.str("query") ?: throw IllegalArgumentException("query required")
@@ -154,10 +157,20 @@ internal class MemoryModule(
             ),
         )
         // Already stored: nothing new to undo, so no "기억했어요 … [취소]" line (취소 would delete the old memory).
-        if (!result.created) return ok("OK: 이미 기억하고 있어요 [${result.id}]")
-        val note = if (confidence == Confidence.GUESS) " 사용자가 확인하기 전까지는 '맞나요?'로 두고 답에 쓰지 않아요." else ""
+        if (!result.created) return ok(tr("OK: Already remembered [${result.id}]", "OK: 이미 기억하고 있어요 [${result.id}]"))
+        val note = if (confidence == Confidence.GUESS) {
+            tr(
+                " Marked as unconfirmed until the user approves it.",
+                " 사용자가 확인하기 전까지는 '맞나요?'로 두고 답에 쓰지 않아요.",
+            )
+        } else {
+            ""
+        }
         return ToolResult(
-            "OK: 기억했어요 [${result.id}].$note 채팅에 취소 버튼과 함께 보여요.", null, null, null,
+            tr(
+                "OK: Remembered [${result.id}].$note Shown in chat with an Undo button.",
+                "OK: 기억했어요 [${result.id}].$note 채팅에 취소 버튼과 함께 보여요.",
+            ), null, null, null,
             remembered = MemoryRef(result.id, text),
         )
     }

@@ -44,7 +44,12 @@ class SmsTool(
         } catch (e: SecurityException) {
             return READ_NEEDED
         }
-        if (hits.isEmpty()) return MessagingReply.Ok(if (q == null) "최근 ${d}일 동안 문자가 없어요." else "최근 ${d}일 문자 중 '$q'가 들어간 것이 없어요.")
+        if (hits.isEmpty()) {
+            return MessagingReply.Ok(
+                if (q == null) tr("No text messages in the last $d days.", "최근 ${d}일 동안 문자가 없어요.")
+                else tr("No text messages matching '$q' in the last $d days.", "최근 ${d}일 문자 중 '$q'가 들어간 것이 없어요."),
+            )
+        }
         return MessagingReply.Ok(
             buildJsonArray {
                 for (m in hits) {
@@ -71,18 +76,18 @@ class SmsTool(
             Recipient.NeedsContacts -> return MessagingReply.PermissionNeeded(ContactsTool.LABEL, ContactsTool.PERMISSIONS)
         }
         val text = body.trim()
-        if (text.isEmpty()) return MessagingReply.Failed("body가 비었어요")
-        if (text.length > MAX_SEND) return MessagingReply.Failed("문자가 너무 길어요 (최대 ${MAX_SEND}자)")
+        if (text.isEmpty()) return MessagingReply.Failed(tr("Message body is empty", "body가 비었어요"))
+        if (text.length > MAX_SEND) return MessagingReply.Failed(tr("Message is too long (max $MAX_SEND characters)", "문자가 너무 길어요 (최대 ${MAX_SEND}자)"))
         if (!source.canSend()) return SEND_NEEDED
         // The whole text and the number actually sent: the card is the only check on what goes out.
         if (!confirm(who, confirmSummary(who.shown, text))) return MessagingReply.Cancelled
         return try {
             source.send(who.number, text)
-            MessagingReply.Ok("OK: ${who.shown}에 문자를 보냈어요.")
+            MessagingReply.Ok(tr("OK: Sent text to ${who.shown}.", "OK: ${who.shown}에 문자를 보냈어요."))
         } catch (e: SecurityException) {
             SEND_NEEDED
         } catch (e: java.io.IOException) {
-            MessagingReply.Failed("문자를 보내지 못했어요 (${e.message ?: "전송 실패"})")
+            MessagingReply.Failed(tr("Couldn't send text (${e.message ?: "send failed"})", "문자를 보내지 못했어요 (${e.message ?: "전송 실패"})"))
         }
     }
 

@@ -41,7 +41,7 @@ class VoiceRecognizer(
     /** Which recognizer this device offers; [VoiceEngine.Dialog] means the caller shows the system dialog. */
     val engine: VoiceEngine by lazy { detectEngine(context) }
 
-    fun start(languageTag: String) {
+    fun start(languageTag: String, languageHints: List<String> = listOf(languageTag)) {
         val engine = engine
         if (engine == VoiceEngine.Dialog) {
             emit(VoiceEvent.Failed(VoiceError.UNAVAILABLE))
@@ -56,13 +56,20 @@ class VoiceRecognizer(
         }
         emit(VoiceEvent.Start)
         r.setRecognitionListener(Listener(id))
+        val primary = languageHints.firstOrNull()?.takeIf { it.isNotBlank() } ?: languageTag
         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
             .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             .putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
             .putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
-            .putExtra(RecognizerIntent.EXTRA_LANGUAGE, languageTag)
-            .putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, languageTag)
+            .putExtra(RecognizerIntent.EXTRA_LANGUAGE, primary)
+            .putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, primary)
             .putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, context.packageName)
+            .apply {
+                val distinctHints = languageHints.filter { it.isNotBlank() }.distinct()
+                if (distinctHints.size > 1) {
+                    putStringArrayListExtra("android.speech.extra.SUPPORTED_LANGUAGES", ArrayList(distinctHints))
+                }
+            }
         try {
             r.startListening(intent)
         } catch (e: RuntimeException) {

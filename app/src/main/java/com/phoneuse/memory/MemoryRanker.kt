@@ -8,16 +8,22 @@ object MemoryText {
         "이나", "이는", "은", "는", "이", "가", "을", "를", "에", "의", "와", "과", "도", "로", "랑", "만", "께", "요",
     )
 
-    /** Words that say nothing about what to look up. */
+    /** Words that say nothing about what to look up (Korean, English, Hindi & Hinglish). */
     private val STOP = setOf(
         "뭐", "뭐가", "뭘", "좀", "그", "저", "나", "내", "제", "어떻게", "무엇", "어디", "언제", "누가", "왜", "있어", "없어",
-        "해줘", "알려줘", "어때", "그리고", "근데", "the", "a", "an", "and", "or", "to", "of", "is", "in",
+        "해줘", "알려줘", "어때", "그리고", "근데",
+        "the", "a", "an", "and", "or", "to", "of", "is", "in", "for", "on", "my", "please",
+        "है", "हैं", "था", "थी", "थे", "का", "की", "के", "को", "में", "पर", "से", "ने", "और", "या", "एक", "यह", "वह",
+        "मैं", "मेरा", "मेरी", "मेरे", "मुझे", "हम", "तुम", "आप", "क्या", "कैसे", "कब", "कहाँ", "क्यों", "करो", "करें", "बताओ",
+        "hai", "hain", "tha", "thi", "the", "ka", "ki", "ke", "ko", "mein", "par", "se", "aur", "ya", "ek", "yeh", "woh",
+        "mera", "meri", "mere", "mujhe", "hum", "tum", "aap", "kya", "kaise", "kab", "kahan", "kyu", "kar", "karo", "karen",
+        "batao", "bhai", "yaar", "ji", "haan", "nahi",
     )
 
     /** Distinct lowercase stems of [text], in order; one-letter words (except digits) are dropped. */
     fun terms(text: String): List<String> {
         val out = LinkedHashSet<String>()
-        for (raw in text.lowercase().split(Regex("[^\\p{L}\\p{N}]+"))) {
+        for (raw in text.lowercase().split(Regex("[^\\p{L}\\p{N}\\p{M}]+"))) {
             if (raw.isEmpty() || raw in STOP) continue
             val stem = stem(raw)
             if (stem in STOP) continue
@@ -90,9 +96,9 @@ object MemoryRanker {
     /** One prompt line: id (for forget), kind, text, optional date/due and a guess marker. */
     fun line(m: Memory): String = buildString {
         append("- [").append(m.id).append("] (").append(m.kind.label).append(") ").append(m.text)
-        m.date?.takeIf { it.isNotBlank() }?.let { append(" · 날짜 ").append(it) }
-        m.due?.takeIf { it.isNotBlank() }?.let { append(" · 기한 ").append(it) }
-        if (m.confidence == Confidence.GUESS) append(" (확실하지 않음)")
+        m.date?.takeIf { it.isNotBlank() }?.let { append(com.phoneuse.i18n.tr(" · date ", " · 날짜 ")).append(it) }
+        m.due?.takeIf { it.isNotBlank() }?.let { append(com.phoneuse.i18n.tr(" · due ", " · 기한 ")).append(it) }
+        if (m.confidence == Confidence.GUESS) append(com.phoneuse.i18n.tr(" (not sure)", " (확실하지 않음)"))
     }
 
     fun block(selected: List<Scored>): String = selected.joinToString("\n") { line(it.memory) }

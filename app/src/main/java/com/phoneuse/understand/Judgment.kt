@@ -106,7 +106,12 @@ object Money {
 
     fun format(amountMinor: Long, currency: String): String {
         val digits = minorDigits(currency)
-        val f = NumberFormat.getCurrencyInstance(if (Lang.korean) Locale.KOREA else Locale.US)
+        val locale = when {
+            Lang.korean && !currency.equals("INR", ignoreCase = true) -> Locale.KOREA
+            currency.equals("INR", ignoreCase = true) || com.phoneuse.i18n.Region.country == "IN" -> Locale("en", "IN")
+            else -> Locale.US
+        }
+        val f = NumberFormat.getCurrencyInstance(locale)
         runCatching { f.currency = Currency.getInstance(currency) }
         f.minimumFractionDigits = digits
         f.maximumFractionDigits = digits

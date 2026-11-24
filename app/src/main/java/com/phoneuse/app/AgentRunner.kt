@@ -645,7 +645,8 @@ class AgentRunner(
                     historyTainted = historyTainted,
                     // The switch never widens a routine run: nobody wrote this request just now.
                     confirmSend = settings.confirmSend.first() || source == Source.ROUTINE,
-                    screenshots = settings.screenContent.first() == ScreenContent.ALL,
+                    screenshots = settings.screenContent.first() == ScreenContent.ALL &&
+                        (settings.authMode.first() != AuthMode.NVIDIA || settings.nvidiaVisionEnabled.first()),
                     adaptiveCapture = true,
                     fixedSend = routine?.fixedSend,
                     appContext = context,

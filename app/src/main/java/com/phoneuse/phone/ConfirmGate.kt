@@ -45,9 +45,14 @@ object ConfirmGate {
                 "Only the user can confirm: they tap $what on the card or say so themselves. Call again without confirmed, show the card and wait.",
                 "사용자가 카드의 $what 버튼을 누르거나 직접 말해야 저장해요. confirmed 없이 불러 카드를 보여주고 기다리세요.",
             )
-            tainted -> "이 작업 중에 다른 곳(웹·화면·사진 등)의 글을 읽어서 확인 없이 저장할 수 없어요. confirmed 없이 다시 불러 카드를 보여주세요."
-            historyTainted && trigger !is RunTrigger.CardButton ->
-                "이 대화에서 앞서 알림·문자·웹 같은 다른 곳의 글을 읽어서 확인 없이 저장할 수 없어요. confirmed 없이 불러 카드를 보여주세요."
+            tainted -> tr(
+                "This run read text from another source (web, screen, or photo), so it cannot save without confirmation. Call again without confirmed to show the card.",
+                "이 작업 중에 다른 곳(웹·화면·사진 등)의 글을 읽어서 확인 없이 저장할 수 없어요. confirmed 없이 다시 불러 카드를 보여주세요.",
+            )
+            historyTainted && trigger !is RunTrigger.CardButton -> tr(
+                "Earlier in this conversation another source (notification, SMS, or web) was read, so it cannot save without confirmation. Call again without confirmed to show the card.",
+                "이 대화에서 앞서 알림·문자·웹 같은 다른 곳의 글을 읽어서 확인 없이 저장할 수 없어요. confirmed 없이 다시 불러 카드를 보여주세요.",
+            )
             else -> null
         }
     }

@@ -119,13 +119,18 @@ class QuickAskActivity : ComponentActivity() {
     }
 
     private fun launchSpeech(language: VoiceLanguage) {
+        val hints = com.phoneuse.voice.speechLanguageHints(language, java.util.Locale.getDefault())
+        val primary = hints.firstOrNull()
         val speech = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
             .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             .putExtra(RecognizerIntent.EXTRA_PROMPT, tr("Speak now", "말해 주세요"))
             .apply {
-                language.tag?.let {
+                primary?.let {
                     putExtra(RecognizerIntent.EXTRA_LANGUAGE, it)
                     putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, it)
+                }
+                if (hints.size > 1) {
+                    putStringArrayListExtra("android.speech.extra.SUPPORTED_LANGUAGES", ArrayList(hints))
                 }
             }
         try {

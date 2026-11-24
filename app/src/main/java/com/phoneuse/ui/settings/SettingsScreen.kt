@@ -353,7 +353,8 @@ fun SettingsScreen(
                             exporting = true
                             scope.launch {
                                 val message = try {
-                                    tr("Saved to Downloads · ${onExport()}", "다운로드 폴더에 저장했어요 · ${onExport()}")
+                                    val exported = onExport()
+                                    tr("Saved to Downloads · $exported", "다운로드 폴더에 저장했어요 · $exported")
                                 } catch (e: CancellationException) {
                                     throw e
                                 } catch (e: Exception) {

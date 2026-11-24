@@ -1,11 +1,13 @@
 package com.phoneuse.voice
 
+import com.phoneuse.app.CompatibleEndpoints
 import com.phoneuse.app.NvidiaVoiceGender
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import okhttp3.Call
 import okhttp3.Callback
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
@@ -32,13 +34,19 @@ object NvidiaSpeechClient {
         data class Failed(val code: Int, val message: String) : SpeechResult
     }
 
-    fun isAsrConfigured(endpointUrl: String, apiKey: String): Boolean =
-        endpointUrl.trim().startsWith("https://") || endpointUrl.trim().startsWith("http://")
-            .let { validUrl -> validUrl && apiKey.isNotBlank() }
+    private fun isValidEndpoint(endpointUrl: String, apiKey: String): Boolean {
+        if (apiKey.isBlank()) return false
+        val url = endpointUrl.trim().toHttpUrlOrNull() ?: return false
+        return when (url.scheme.lowercase()) {
+            "https" -> true
+            "http" -> url.host.lowercase() in CompatibleEndpoints.CLEARTEXT_HOSTS
+            else -> false
+        }
+    }
 
-    fun isTtsConfigured(endpointUrl: String, apiKey: String): Boolean =
-        (endpointUrl.trim().startsWith("https://") || endpointUrl.trim().startsWith("http://")) &&
-            apiKey.isNotBlank()
+    fun isAsrConfigured(endpointUrl: String, apiKey: String): Boolean = isValidEndpoint(endpointUrl, apiKey)
+
+    fun isTtsConfigured(endpointUrl: String, apiKey: String): Boolean = isValidEndpoint(endpointUrl, apiKey)
 
     suspend fun transcribeParakeet(
         endpointUrl: String,

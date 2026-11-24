@@ -21,7 +21,7 @@ internal class FileModule(private val files: FileTools?, private val gate: UserG
     override val specs: List<ToolSpec> get() = SPECS
 
     override suspend fun run(name: String, args: JsonObject, context: ToolContext): ToolResult {
-        val tools = files ?: return fail("모든 파일 접근 권한이 필요해요")
+        val tools = files ?: return fail(tr("All files access permission is required", "모든 파일 접근 권한이 필요해요"))
         return try {
             when (name) {
                 "list_dir" -> ok(tools.listDir(args.requireStr("path"), args.int("limit") ?: DEFAULT_LIST_LIMIT, args.int("offset") ?: 0))

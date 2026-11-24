@@ -58,6 +58,8 @@ data class NimProbeReport(
     val chatOk: Boolean,
     val toolsOk: Boolean? = null,
     val visionOk: Boolean? = null,
+    val streamingOk: Boolean? = null,
+    val unsupportedParams: Set<String> = emptySet(),
     val latencyMs: Long = 0L,
     val error: String? = null,
 )
@@ -100,11 +102,71 @@ class NvidiaNimClient(
         tools: List<ToolSpec>,
         onTextDelta: (String) -> Unit,
     ): ModelTurn {
-        val cap = registry?.capability(options.model) ?: NvidiaModelRegistry.inferCapability(options.model)
-        val allowImages = cap.canAcceptImages(config.visionEnabled)
-        val effectiveTools = if (cap.supportsTools) tools else emptyList()
-        val body = buildRequestBody(instructions, input, effectiveTools, allowImages, stream = config.streaming)
-        return send(body, streaming = config.streaming, onTextDelta = onTextDelta)
+        val droppedThisCall = HashSet<String>()
+        while (true) {
+            val profile = ModelCapabilityRegistry.profile(normalizedBaseUrl, options.model, registry)
+            val allowImages = profile.canAcceptImages(config.visionEnabled)
+            val cleanInput = if (allowImages) {
+                input
+            } else {
+                ModelCapabilityRegistry.stripImagesFromHistory(
+                    input,
+                    omittedMarker = "[Screenshot omitted: active model ${options.model} is text-only or vision is disabled]",
+                )
+            }
+            val effectiveTools = if (profile.supportsTools && profile.supportsParam("tools")) tools else emptyList()
+            val effectiveStream = config.streaming && profile.supportsStreaming
+            val body = buildRequestBody(
+                instructions = instructions,
+                input = cleanInput,
+                tools = effectiveTools,
+                allowImages = allowImages,
+                stream = effectiveStream,
+                profile = profile,
+            )
+            try {
+                return send(body, streaming = effectiveStream, onTextDelta = onTextDelta)
+            } catch (e: ModelException) {
+                when {
+                    ModelErrorClassifier.isMultimodalRejection(e) -> {
+                        registry?.markVisionUnsupported(options.model)
+                        ModelCapabilityRegistry.markVisionUnsupported(normalizedBaseUrl, options.model)
+                        throw ModelException(
+                            status = e.status ?: 400,
+                            message = e.message ?: "Model rejected multimodal content",
+                            retryAfterMs = e.retryAfterMs,
+                            code = ModelErrorClassifier.CODE_MULTIMODAL_UNSUPPORTED,
+                            afterOutput = e.afterOutput,
+                            retryable = false,
+                            failure = e.failure,
+                        )
+                    }
+                    ModelErrorClassifier.isStreamingRejection(e) && effectiveStream && droppedThisCall.add("stream") -> {
+                        registry?.markStreamingUnsupported(options.model)
+                        ModelCapabilityRegistry.markStreamingUnsupported(normalizedBaseUrl, options.model)
+                        continue
+                    }
+                    ModelErrorClassifier.isToolsRejection(e) -> {
+                        registry?.markToolsUnsupported(options.model)
+                        ModelCapabilityRegistry.markToolsUnsupported(normalizedBaseUrl, options.model)
+                        throw e
+                    }
+                    ModelErrorClassifier.isModelUnavailable(e) -> {
+                        registry?.markUnavailable(options.model)
+                        throw e
+                    }
+                    else -> {
+                        val badParam = ModelErrorClassifier.rejectedParam(e)
+                        if (badParam != null && badParam != "tools" && droppedThisCall.add(badParam)) {
+                            registry?.markParamUnsupported(options.model, badParam)
+                            ModelCapabilityRegistry.markParamUnsupported(normalizedBaseUrl, options.model, badParam)
+                            continue
+                        }
+                        throw e
+                    }
+                }
+            }
+        }
     }
 
     internal fun buildRequestBody(
@@ -113,19 +175,28 @@ class NvidiaNimClient(
         tools: List<ToolSpec>,
         allowImages: Boolean,
         stream: Boolean,
+        profile: ModelCapabilityProfile = ModelCapabilityRegistry.profile(normalizedBaseUrl, options.model, registry),
     ): String = buildJsonObject {
+        val effectiveAllowImages = allowImages && !ModelCapabilityRegistry.isPinnedTextOnly(options.model)
+        val sanitizedInput = if (effectiveAllowImages) input else ModelCapabilityRegistry.stripImagesFromHistory(input)
         put("model", options.model)
-        put("messages", buildMessages(instructions, input, allowImages))
-        if (tools.isNotEmpty()) {
+        put("messages", buildMessages(instructions, sanitizedInput, effectiveAllowImages))
+        if (tools.isNotEmpty() && profile.supportsTools && profile.supportsParam("tools")) {
             put("tools", buildJsonArray { tools.forEach { add(it.toJson()) } })
         }
         put("stream", stream)
-        if (stream) {
+        if (stream && profile.supportsParam("stream_options")) {
             put("stream_options", buildJsonObject { put("include_usage", true) })
         }
-        put("temperature", config.temperature)
-        put("top_p", config.topP)
-        put("max_tokens", config.maxTokens)
+        if (profile.supportsParam("temperature")) {
+            put("temperature", config.temperature)
+        }
+        if (profile.supportsParam("top_p")) {
+            put("top_p", config.topP)
+        }
+        if (profile.supportsParam("max_tokens")) {
+            put("max_tokens", config.maxTokens)
+        }
     }.toString()
 
     private fun buildMessages(
@@ -133,6 +204,7 @@ class NvidiaNimClient(
         input: List<InputItem>,
         allowImages: Boolean,
     ): JsonArray = buildJsonArray {
+        val effectiveAllowImages = allowImages && !ModelCapabilityRegistry.isPinnedTextOnly(options.model)
         if (instructions.isNotBlank()) {
             add(buildJsonObject {
                 put("role", "system")
@@ -155,7 +227,7 @@ class NvidiaNimClient(
                         })
                     }
                     if (message.parts.isNotEmpty()) {
-                        add(userMessage(message.parts, allowImages))
+                        add(userMessage(message.parts, effectiveAllowImages))
                     }
                 }
             }
@@ -663,13 +735,17 @@ class NvidiaNimClient(
             baseUrl: String = DEFAULT_BASE_URL,
             testTools: Boolean = true,
             testVision: Boolean = false,
+            testStreaming: Boolean = false,
         ): NimProbeReport = withContext(Dispatchers.IO) {
+            val base = if (baseUrl.endsWith('/')) baseUrl else "$baseUrl/"
+            val probeRegistry = NvidiaModelRegistry()
             val client = NvidiaNimClient(
                 apiKey = apiKey,
                 options = ModelOptions(model = modelId, fast = false, effort = "low"),
                 http = http,
-                baseUrl = baseUrl,
+                baseUrl = base,
                 config = NimRequestConfig(streaming = false, maxTokens = 32, temperature = 0.0, timeoutSeconds = 25, visionEnabled = testVision),
+                registry = probeRegistry,
             )
             val start = System.currentTimeMillis()
             val chatOk = try {
@@ -710,8 +786,11 @@ class NvidiaNimClient(
                 }
             }
 
-            val visionOk = if (!testVision) null else {
-                try {
+            val pinnedTextOnly = ModelCapabilityRegistry.isPinnedTextOnly(modelId)
+            val visionOk = when {
+                pinnedTextOnly -> false
+                !testVision -> null
+                else -> try {
                     val img = InputItem.UserImage(TINY_PNG_BASE64, "image/png")
                     val body = client.buildRequestBody(
                         instructions = "Answer with one word.",
@@ -719,11 +798,66 @@ class NvidiaNimClient(
                         tools = emptyList(),
                         allowImages = true,
                         stream = false,
+                        profile = ModelCapabilityProfile(modelId = modelId, supportsVision = true),
                     )
                     client.send(body, streaming = false) {}
                     true
-                } catch (_: ModelException) {
+                } catch (e: ModelException) {
+                    if (ModelErrorClassifier.isMultimodalRejection(e)) {
+                        probeRegistry.markVisionUnsupported(modelId)
+                        ModelCapabilityRegistry.markVisionUnsupported(base, modelId)
+                    }
                     false
+                }
+            }
+
+            val streamingOk = if (!testStreaming) null else {
+                val streamClient = NvidiaNimClient(
+                    apiKey = apiKey,
+                    options = ModelOptions(model = modelId, fast = false, effort = "low"),
+                    http = http,
+                    baseUrl = base,
+                    config = NimRequestConfig(streaming = true, maxTokens = 16, temperature = 0.0, timeoutSeconds = 25, visionEnabled = false),
+                    registry = probeRegistry,
+                )
+                try {
+                    val body = streamClient.buildRequestBody(
+                        instructions = "Reply with OK.",
+                        input = listOf(InputItem.UserText("ping")),
+                        tools = emptyList(),
+                        allowImages = false,
+                        stream = true,
+                    )
+                    streamClient.send(body, streaming = true) {}
+                    true
+                } catch (e: ModelException) {
+                    if (ModelErrorClassifier.isStreamingRejection(e)) {
+                        probeRegistry.markStreamingUnsupported(modelId)
+                        ModelCapabilityRegistry.markStreamingUnsupported(base, modelId)
+                        false
+                    } else if (ModelErrorClassifier.rejectedParam(e) == "stream_options") {
+                        probeRegistry.markParamUnsupported(modelId, "stream_options")
+                        ModelCapabilityRegistry.markParamUnsupported(base, modelId, "stream_options")
+                        try {
+                            val retryBody = streamClient.buildRequestBody(
+                                instructions = "Reply with OK.",
+                                input = listOf(InputItem.UserText("ping")),
+                                tools = emptyList(),
+                                allowImages = false,
+                                stream = true,
+                            )
+                            streamClient.send(retryBody, streaming = true) {}
+                            true
+                        } catch (_: ModelException) {
+                            probeRegistry.markStreamingUnsupported(modelId)
+                            ModelCapabilityRegistry.markStreamingUnsupported(base, modelId)
+                            false
+                        }
+                    } else {
+                        probeRegistry.markStreamingUnsupported(modelId)
+                        ModelCapabilityRegistry.markStreamingUnsupported(base, modelId)
+                        false
+                    }
                 }
             }
 
@@ -732,6 +866,8 @@ class NvidiaNimClient(
                 chatOk = chatOk,
                 toolsOk = toolsOk,
                 visionOk = visionOk,
+                streamingOk = streamingOk,
+                unsupportedParams = probeRegistry.capability(modelId).unsupportedParams,
                 latencyMs = latency,
             )
         }

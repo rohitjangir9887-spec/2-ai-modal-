@@ -7,8 +7,8 @@ package com.phoneuse.phone
 object SmsParsers {
     // ---- verification codes ----------------------------------------------------------------------
 
-    private val CODE_CONTEXT = Regex("인증\\s*번호|인증\\s*코드|확인\\s*번호|본인\\s*확인|보안\\s*코드|OTP|[Vv]erification|[Cc]ode|코드")
-    private val CODE = Regex("""(?<![\d,])\d{4,8}(?![\d,원])""")
+    private val CODE_CONTEXT = Regex("인증\\s*번호|인증\\s*코드|확인\\s*번호|본인\\s*확인|보안\\s*코드|OTP|[Vv]erification|[Cc]ode|코드|ओटीपी|पिन|वेरिफिकेशन|पासकोड|वन\\s*टाइम\\s*पासवर्ड")
+    private val CODE = Regex("""(?<![\d,\u0966-\u096F₹])[\d\u0966-\u096F]{4,8}(?![\d,\u0966-\u096F원])""")
 
     /** True for a one-time code text (인증번호, OTP...). */
     fun isVerification(text: String): Boolean = CODE_CONTEXT.containsMatchIn(text)

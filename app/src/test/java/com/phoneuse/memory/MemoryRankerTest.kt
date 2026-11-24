@@ -67,4 +67,19 @@ class MemoryRankerTest {
         assertTrue(q, "OR*" !in q && "NEAR*" !in q)
         assertEquals(null, MemoryText.ftsQuery("? !"))
     }
+
+    @Test fun hindiAndHinglishStopwordsAndEnglishLineFormat() {
+        assertEquals(listOf("रवि", "फोन", "बैटरी"), MemoryText.terms("मेरा रवि को फोन बैटरी क्या है"))
+        assertEquals(listOf("whatsapp", "message", "priya", "bhejo"), MemoryText.terms("mera whatsapp message priya ko bhejo please"))
+        val saved = com.phoneuse.i18n.Lang.korean
+        com.phoneuse.i18n.Lang.korean = false
+        try {
+            val formatted = MemoryRanker.line(
+                Memory(5, "Catalog format: bullet list in INR", MemoryKind.HABIT, Confidence.GUESS, 1L, 1L, date = "2026-11-20", due = "2026-11-25"),
+            )
+            assertTrue(formatted, formatted.contains("(Habit)") && formatted.contains(" · date 2026-11-20") && formatted.contains(" · due 2026-11-25") && formatted.contains("(not sure)"))
+        } finally {
+            com.phoneuse.i18n.Lang.korean = saved
+        }
+    }
 }

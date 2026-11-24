@@ -10,9 +10,12 @@ import com.phoneuse.chat.MemoryRef
 import com.phoneuse.model.Citation
 import com.phoneuse.model.InputItem
 import com.phoneuse.model.ModelClient
+import com.phoneuse.model.ModelErrorClassifier
 import com.phoneuse.model.ModelException
 import com.phoneuse.model.ModelTurn
 import com.phoneuse.model.WebSearchCall
+import com.phoneuse.risk.RiskCategory
+import com.phoneuse.risk.RiskGuard
 import com.phoneuse.screen.CompressedScreen
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
@@ -223,6 +226,8 @@ class AgentLoop(
         // The latest screen the model has seen; null until it has seen one.
         var current: CompressedScreen? = null
         var deviceUsed = false
+        var forceTextOnlyMode = !executor.screenshotsEnabled
+        if (forceTextOnlyMode) stripAllImagesFromInput(input)
         // The run worked inside an app, instead of only opening one (see stayHonoured).
         var worked = false
         // Apps whose tips were already looked up, and the device actions taken in each app (for a new tip).
@@ -235,7 +240,9 @@ class AgentLoop(
             current = observed.screen ?: throw Fail(tr("Error: couldn't read the screen", "오류: 화면을 읽지 못했어요"))
             journal.revisit(0, "start", observed.screen)
             addOutput(InputItem.UserText(observed.output), observed.screen)
-            observed.screenshot?.let { addImage(input, it) }
+            if (!forceTextOnlyMode && executor.screenshotsEnabled) {
+                observed.screenshot?.let { addImage(input, it) }
+            }
             addTips(input, observed.screen, tipped)
         }
 
@@ -304,14 +311,45 @@ class AgentLoop(
 
             val started = System.nanoTime()
             var restarts = 0
+            var multimodalRecoveries = 0
             var turn: ModelTurn
             while (true) {
+                if (forceTextOnlyMode || !executor.screenshotsEnabled) {
+                    forceTextOnlyMode = true
+                    stripAllImagesFromInput(input)
+                }
                 val next = try {
                     streamTurn(input, watch.takeIf { restarts < Speculation.MAX_RESTARTS })
                 } catch (e: Overflow) {
                     // Too long for the model after all: cut down to the last couple of steps and try once more.
                     if (overflowRetried || !compact(MIN_KEEP_STEPS)) throw Fail(ModelRetry.message(e.error))
                     overflowRetried = true
+                    continue
+                } catch (e: MultimodalUnsupported) {
+                    // The selected model rejected images: permanently disable screenshots for this run,
+                    // strip ALL image items/attachments across history, refresh the Accessibility UI tree,
+                    // and resume the same step cleanly without repeating any previously executed action.
+                    if (multimodalRecoveries >= MAX_MULTIMODAL_RECOVERIES) {
+                        throw Fail(ModelRetry.message(e.error), e.error.code)
+                    }
+                    multimodalRecoveries++
+                    forceTextOnlyMode = true
+                    executor.disableScreenshots()
+                    stripAllImagesFromInput(input)
+                    if (!deviceUsed) {
+                        emit(AgentEvent.DeviceUse)
+                        deviceUsed = true
+                    }
+                    val observed = executor.observe(includeScreenshot = false)
+                    observed.screen?.let { current = it }
+                    val treeBody = observed.output.removePrefix("# Screen\n")
+                    val recoveryText = if (treeBody.isBlank()) {
+                        MULTIMODAL_RECOVERY_HEADER.trimEnd()
+                    } else {
+                        MULTIMODAL_RECOVERY_HEADER + treeBody
+                    }
+                    addOutput(InputItem.UserText(recoveryText), observed.screen)
+                    watch = null
                     continue
                 }
                 if (next != null) {
@@ -320,7 +358,7 @@ class AgentLoop(
                 }
                 // The screen changed after the model was sent it: show the new one and ask again.
                 restarts++
-                val observed = executor.observe()
+                val observed = executor.observe(includeScreenshot = false)
                 observed.screen?.let { current = it }
                 addOutput(InputItem.UserText(SCREEN_CHANGED + observed.output.removePrefix("# Screen\n")), observed.screen)
                 watch = executor.takeWatch()
@@ -396,9 +434,17 @@ class AgentLoop(
                 val tipDescription = if (Lang.korean) description else describe(call, current, korean = true)
                 if (call.name !in QUIET_TOOLS) emit(AgentEvent.Acting(description))
 
+                val screenFingerprint = current?.let(ScreenJournal::fingerprint)
+                val sendSignature = sendActionSignature(call, current)
+                if (sendSignature != null && stallGuard.isDuplicateSend(sendSignature, screenFingerprint)) {
+                    input += call
+                    addOutput(InputItem.FunctionOutput(call.callId, DUPLICATE_SEND_BLOCKED), null)
+                    continue
+                }
+
                 // A previously unsuccessful call on an unchanged screen must not be repeated
                 // indefinitely. Replan once without executing it; then stop with a clear error.
-                when (stallGuard.check(call.name, call.argumentsJson, current?.let(ScreenJournal::fingerprint))) {
+                when (stallGuard.check(call.name, call.argumentsJson, screenFingerprint)) {
                     ActionStallGuard.Decision.REPLAN -> {
                         input += call
                         addOutput(InputItem.FunctionOutput(
@@ -429,6 +475,14 @@ class AgentLoop(
                     continue
                 }
                 val result = executor.execute(call, current)
+                if (sendSignature != null &&
+                    !result.output.startsWith("ERROR") &&
+                    !result.output.startsWith("STOPPED") &&
+                    !result.output.startsWith("CANCELLED") &&
+                    !result.output.startsWith("NOT RUN")
+                ) {
+                    stallGuard.recordExecutedSend(sendSignature, screenFingerprint)
+                }
                 // Diagnostic log intentionally records only a tool name and success flag, never private arguments or screen text.
                 if (BuildConfig.DEBUG) {
                     TRACE.info("step=$step tool=${call.name} completed=${!result.output.startsWith("ERROR")}")
@@ -438,7 +492,9 @@ class AgentLoop(
                 val output = if (overridden) NOT_FINISHED else result.output
                 input += call
                 addOutput(InputItem.FunctionOutput(call.callId, annotate(output, step, description, result.screen)), result.screen)
-                result.screenshot?.let { addImage(input, it) }
+                if (!forceTextOnlyMode && executor.screenshotsEnabled) {
+                    result.screenshot?.let { addImage(input, it) }
+                }
                 result.screen?.let { current = it }
                 result.card?.let { emit(AgentEvent.Card(it)) }
                 result.remembered?.let { emit(AgentEvent.Remembered(it)) }
@@ -646,6 +702,7 @@ class AgentLoop(
         val status = e.status
         when {
             status == 401 || status == 403 -> throw Fail(e.message ?: tr("Authentication failed", "인증에 실패했어요"))
+            ModelErrorClassifier.isMultimodalRejection(e) -> throw MultimodalUnsupported(e)
             ModelRetry.contextOverflow(e) -> throw Overflow(e)
             else -> throw Fail(ModelRetry.message(e), e.code)
         }
@@ -653,6 +710,9 @@ class AgentLoop(
 
     /** The input no longer fits the model's window; the loop compacts it and tries once more. */
     private class Overflow(val error: ModelException) : Exception(error.message)
+
+    /** The model rejected image content; the loop strips all history images and switches to text-only mode. */
+    private class MultimodalUnsupported(val error: ModelException) : Exception(error.message)
 
     /** Adds the tip note for [screen]'s app the first time the run sees that app. */
     private suspend fun addTips(input: MutableList<InputItem>, screen: CompressedScreen?, tipped: MutableSet<String>) {
@@ -677,6 +737,60 @@ class AgentLoop(
                 val marks = List(item.images.size) { PHOTO_MARK }.joinToString(" ")
                 input[i] = InputItem.UserText(if (item.text.isEmpty()) marks else "$marks ${item.text}")
             }
+        }
+    }
+
+    /** Replaces ALL screenshots and attached photos across the entire history in-place, preserving indices. */
+    private fun stripAllImagesFromInput(input: MutableList<InputItem>) {
+        for (i in input.indices) {
+            when (val item = input[i]) {
+                is InputItem.UserImage -> input[i] = InputItem.UserText(OMITTED_SCREENSHOT)
+                is InputItem.UserText -> if (item.images.isNotEmpty()) {
+                    val marks = List(item.images.size) { PHOTO_MARK }.joinToString(" ")
+                    input[i] = item.copy(
+                        text = if (item.text.isEmpty()) marks else "$marks ${item.text}",
+                        images = emptyList(),
+                    )
+                }
+                else -> Unit
+            }
+        }
+    }
+
+    private fun sendActionSignature(call: InputItem.FunctionCall, screen: CompressedScreen?): String? {
+        if (screen == null) return null
+        val args = try {
+            Json.parseToJsonElement(call.argumentsJson) as? JsonObject
+        } catch (_: Exception) {
+            null
+        } ?: return null
+        return when (call.name) {
+            "type_text" -> {
+                if (args.bool("submit") != true) return null
+                val index = args.int("index") ?: return null
+                val node = screen.elements[index] ?: return null
+                if (ToolExecutor.isSearchFieldNode(node)) return null
+                val text = args.str("text")?.trim()?.lowercase().orEmpty()
+                "type_text_send:${screen.packageName.orEmpty()}:$index:$text"
+            }
+            "tap", "long_press" -> {
+                val index = args.int("index") ?: run {
+                    val x = args.int("x") ?: return null
+                    val y = args.int("y") ?: return null
+                    screen.elements.entries
+                        .filter { (_, n) -> x >= n.bounds.left && x < n.bounds.right && y >= n.bounds.top && y < n.bounds.bottom }
+                        .minByOrNull { (_, n) -> (n.bounds.right - n.bounds.left).toLong() * (n.bounds.bottom - n.bounds.top) }
+                        ?.key
+                }
+                val label = index?.let { screen.fullLabels[it] }
+                val declaredSend = args.str("risk")?.equals("send", ignoreCase = true) == true
+                if (!declaredSend && RiskGuard.match(label, screen.packageName)?.category != RiskCategory.SEND) return null
+                val draft = screen.elements.values
+                    .firstOrNull { it.editable && !it.text.isNullOrBlank() && it.text != it.hint }
+                    ?.text?.trim().orEmpty()
+                "tap_send:${screen.packageName.orEmpty()}:${label?.trim().orEmpty()}:$draft"
+            }
+            else -> null
         }
     }
 
@@ -738,6 +852,9 @@ class AgentLoop(
         const val AFTER_FINISH = "NOT RUN: the user sent a new instruction before the task finished."
         const val NOT_FINISHED = "NOT FINISHED: the user sent a new instruction (below) while you were finishing. Follow it, then finish again."
         const val HELPER_DOWN = "ERROR: the helper is unavailable for the rest of this task; do this yourself."
+        const val DUPLICATE_SEND_BLOCKED = "ERROR: duplicate send blocked — that Send action already ran on this screen. Refresh or inspect the chat to verify whether the message appears as sent before acting again."
+        const val MULTIMODAL_RECOVERY_HEADER = "# Refreshed screen (switched to text-only mode because the model does not support images)\n"
+        const val MAX_MULTIMODAL_RECOVERIES = 2
 
         /**
          * Calls that act on the phone or end the turn's work: only the first of them in a turn runs, since the
@@ -780,7 +897,7 @@ class AgentLoop(
         val WORK_TOOLS = TIP_ACTIONS - setOf("open_app", "open_uri") + "delegate"
 
         /** Fields whose input must never be kept, even as a label. */
-        val SECRET_FIELD = Regex("(?i)(?<![a-z])(otp|pin|passcode|password|passwd|cvc|cvv|code)(?![a-z])|인증|비밀번호|보안|코드")
+        val SECRET_FIELD = Regex("(?i)(?<![a-z])(otp|pin|mpin|tpin|passcode|password|passwd|passkey|cvc|cvv|code|aadhaar|aadhar|ifsc)(?![a-z])|인증|비밀번호|보안|코드|पासवर्ड|पिन|पासकी|आधार|पैन")
 
         /** Never tipped: this app and the system UI. */
         val NO_TIP_PACKAGES = setOf("com.phoneuse", "com.android.systemui")

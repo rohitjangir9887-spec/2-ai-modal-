@@ -25,7 +25,7 @@ sealed interface MessagingReply {
      * (PermissionCard.settings).
      */
     data class PermissionNeeded(val label: String, val permissions: List<String>, val settings: String? = null) : MessagingReply {
-        override val text get() = "권한 필요: $label"
+        override val text get() = tr("Permission needed: $label", "권한 필요: $label")
     }
 
     data class Failed(val reason: String) : MessagingReply {
@@ -65,7 +65,7 @@ class NotificationTool(private val source: NotificationSource, private val now: 
         if (!source.accessEnabled()) return ACCESS_NEEDED
         val h = hours.coerceIn(1, MAX_HOURS)
         val list = source.recent(h)
-        if (list.isEmpty()) return MessagingReply.Ok("최근 ${h}시간 동안 받은 알림이 없어요.")
+        if (list.isEmpty()) return MessagingReply.Ok(tr("No notifications in the last $h hours.", "최근 ${h}시간 동안 받은 알림이 없어요."))
         val clock = now()
         val facts = source.facts(list.map { it.key })
         val groups = DigestGroups.group(list, facts, source.analysisOn())
@@ -102,7 +102,7 @@ class NotificationTool(private val source: NotificationSource, private val now: 
         if (!source.accessEnabled()) return ACCESS_NEEDED
         val known = source.recent(MAX_HOURS).associateBy { it.key }
         val targets = keys.distinct().mapNotNull { known[it] }
-        if (targets.isEmpty()) return MessagingReply.Failed("그 알림을 찾지 못했어요. notifications_recent의 key를 쓰세요.")
+        if (targets.isEmpty()) return MessagingReply.Failed(tr("Notification not found. Use a key from notifications_recent.", "그 알림을 찾지 못했어요. notifications_recent의 key를 쓰세요."))
         // App and time only: a notification's own title is third-party text and must not word the DELETE card.
         val clock = now()
         val shown = targets.take(MAX_SHOWN).joinToString(", ") { "${it.appLabel.take(MAX_SHOWN_CHARS)} ${clockText(it.postedAt, clock)}" }
@@ -110,7 +110,7 @@ class NotificationTool(private val source: NotificationSource, private val now: 
         val more = if (extra > 0) tr(" (+$extra more)", " (외 ${extra}개)") else ""
         if (!confirm(tr("Clear ${targets.size} notifications: $shown$more", "알림 ${targets.size}개 지우기: $shown$more"))) return MessagingReply.Cancelled
         source.dismiss(targets.map { it.key })
-        return MessagingReply.Ok("OK: 알림 ${targets.size}개를 지웠어요.")
+        return MessagingReply.Ok(tr("OK: Dismissed ${targets.size} notifications.", "OK: 알림 ${targets.size}개를 지웠어요."))
     }
 
     private fun item(n: StoredNotification, f: NoticeFact?, clock: ZonedDateTime, withText: Boolean): JsonObject = buildJsonObject {
@@ -130,7 +130,7 @@ class NotificationTool(private val source: NotificationSource, private val now: 
         put("judgment", buildJsonObject {
             put("kind", j.kind.wire)
             j.amountMinor?.let { a ->
-                val currency = j.currency ?: "KRW"
+                val currency = j.currency ?: if (com.phoneuse.i18n.Region.country == "IN") "INR" else "KRW"
                 put("amount", java.math.BigDecimal.valueOf(a, Money.minorDigits(currency)).toPlainString())
                 put("currency", currency)
             }

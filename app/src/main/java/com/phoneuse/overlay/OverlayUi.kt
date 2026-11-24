@@ -185,8 +185,8 @@ fun DockContent(
     var wantKeyboard by remember { mutableStateOf(false) }
     var sendRefused by remember(draft.text) { mutableStateOf(false) }
     var queueMode by remember { mutableStateOf(false) }
-    var logsExpanded by remember { mutableStateOf(false) }
-    var minimized by remember { mutableStateOf(false) }
+    var panelState by remember { mutableStateOf(OverlayPanelState()) }
+    val effectiveMinimized = panelState.isEffectivelyMinimized(card)
     val focusManager = LocalFocusManager.current
     val keyboard = LocalSoftwareKeyboardController.current
 
@@ -270,15 +270,18 @@ fun DockContent(
             if (card == null) {
                 StatusHeader(
                     state = state,
-                    expanded = logsExpanded,
-                    minimized = minimized,
-                    onToggleMinimized = { minimized = !minimized },
-                    onToggleLogs = { logsExpanded = !logsExpanded },
+                    panelState = panelState,
+                    onToggleMinimized = { panelState = panelState.toggleMinimized() },
+                    onToggleLogsVisible = { panelState = panelState.toggleLogsVisible() },
+                    onToggleLogsExpanded = { panelState = panelState.toggleLogsExpanded() },
                     onPauseToggle = onPauseToggle,
                     onStop = onStop,
                 )
-                if (!minimized) {
-                LogLines(state, expanded = logsExpanded)
+                if (!effectiveMinimized) {
+                LogLines(
+                    lines = panelState.visibleLogs(state),
+                    expanded = panelState.logsMode == OverlayLogsMode.EXPANDED,
+                )
                 val placeholder = if (queueMode) {
                     tr("Queue next task…", "다음 작업 대기열에 추가…")
                 } else {
@@ -331,15 +334,18 @@ fun DockContent(
 @Composable
 private fun StatusHeader(
     state: AgentUiState,
-    expanded: Boolean,
-    minimized: Boolean,
+    panelState: OverlayPanelState,
     onToggleMinimized: () -> Unit,
-    onToggleLogs: () -> Unit,
+    onToggleLogsVisible: () -> Unit,
+    onToggleLogsExpanded: () -> Unit,
     onPauseToggle: () -> Unit,
     onStop: () -> Unit,
 ) {
     val c = pu
     val live = state.phase == AgentPhase.THINKING || state.phase == AgentPhase.ACTING
+    val minimized = panelState.minimized
+    val expanded = panelState.logsMode == OverlayLogsMode.EXPANDED
+    val logsHidden = panelState.logsMode == OverlayLogsMode.HIDDEN
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Row(Modifier.padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             StatusDot(live)
@@ -361,21 +367,35 @@ private fun StatusHeader(
                 if (minimized) "+" else "−",
                 Modifier
                     .testTag("overlay_minimize_toggle")
-                    .semantics { contentDescription = if (minimized) "Expand task controls" else "Minimize task controls" }
+                    .semantics { contentDescription = if (minimized) tr("Expand task panel", "작업 패널 펼치기") else tr("Minimize task panel", "작업 패널 접기") }
                     .clip(RoundedCornerShape(10.dp))
                     .clickable(role = Role.Button, onClick = onToggleMinimized)
                     .padding(horizontal = 9.dp, vertical = 6.dp),
                 fontSize = 14.sp, color = c.textSub,
             )
             Spacer(Modifier.width(3.dp))
-            if (!minimized && state.allLines.size > 3) {
+            if (!minimized && state.allLines.isNotEmpty()) {
                 Text(
-                    if (expanded) tr("Less", "접기") else tr("Logs", "로그"),
+                    if (logsHidden) tr("Logs", "로그") else tr("Hide", "숨기기"),
+                    Modifier
+                        .testTag("overlay_logs_visibility_toggle")
+                        .semantics { contentDescription = if (logsHidden) tr("Show task logs", "작업 로그 보기") else tr("Hide task logs", "작업 로그 숨기기") }
+                        .clip(RoundedCornerShape(10.dp))
+                        .clickable(role = Role.Button, onClick = onToggleLogsVisible)
+                        .padding(horizontal = 7.dp, vertical = 6.dp),
+                    fontSize = 12.sp,
+                    color = c.textSub,
+                )
+                Spacer(Modifier.width(3.dp))
+            }
+            if (!minimized && !logsHidden && state.allLines.size > 3) {
+                Text(
+                    if (expanded) tr("Less", "접기") else tr("All", "전체"),
                     Modifier
                         .testTag("overlay_logs_toggle")
                         .clip(RoundedCornerShape(10.dp))
-                        .clickable(role = Role.Button, onClick = onToggleLogs)
-                        .padding(horizontal = 8.dp, vertical = 6.dp),
+                        .clickable(role = Role.Button, onClick = onToggleLogsExpanded)
+                        .padding(horizontal = 7.dp, vertical = 6.dp),
                     fontSize = 12.sp,
                     color = c.textSub,
                 )
@@ -470,9 +490,8 @@ private fun StatusDot(live: Boolean) {
 }
 
 @Composable
-private fun LogLines(state: AgentUiState, expanded: Boolean) {
+private fun LogLines(lines: List<String>, expanded: Boolean) {
     val c = pu
-    val lines = if (expanded) state.allLines else state.lines.takeLast(3)
     if (lines.isEmpty()) return
     Column(
         Modifier

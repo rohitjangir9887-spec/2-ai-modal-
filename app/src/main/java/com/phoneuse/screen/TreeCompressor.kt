@@ -131,8 +131,15 @@ object TreeCompressor {
 
 
 
-    private fun ownText(n: UiNode): String? =
-        n.text?.takeIf { it.isNotBlank() } ?: n.contentDescription?.takeIf { it.isNotBlank() }
+    private const val PASSWORD_MASK = "••••••••"
+
+    private fun ownText(n: UiNode): String? {
+        if (n.password) {
+            if (!n.text.isNullOrBlank()) return PASSWORD_MASK
+            return n.contentDescription?.takeIf { it.isNotBlank() }
+        }
+        return n.text?.takeIf { it.isNotBlank() } ?: n.contentDescription?.takeIf { it.isNotBlank() }
+    }
 
     /** On screen = not under a window above, bounds non-empty and intersecting (0,0,displayWidth,displayHeight). */
     private fun visible(n: UiNode, s: ScreenSnapshot): Boolean {
@@ -152,17 +159,19 @@ object TreeCompressor {
             val own = ownText(n)
             if (n.isActionable) {
                 var label = own ?: n.hint?.takeIf { it.isNotBlank() }
-                if (label == null) {
+                if (label == null && !n.password) {
                     val parts = ArrayList<String>()
                     for (c in n.children) gather(c, s, parts, absorbed)
                     label = parts.joinToString(" ")
                 }
-                out.add(Entry(n, normalize(label)))
+                out.add(Entry(n, normalize(label.orEmpty())))
             } else if (own != null) {
                 out.add(Entry(n, normalize(own)))
             }
         }
-        for (c in n.children) collect(c, s, out, absorbed)
+        if (!n.password) {
+            for (c in n.children) collect(c, s, out, absorbed)
+        }
     }
 
     /** Collects text of non-actionable descendants (not crossing actionable ones) and marks them absorbed. */
@@ -217,7 +226,7 @@ object TreeCompressor {
                 h = 31 * h + flags
             }
         }
-        if (isSurface(n.className)) return h
+        if (isSurface(n.className) || n.password) return h
         for (c in n.children) h = hashNode(c, s, h)
         return h
     }

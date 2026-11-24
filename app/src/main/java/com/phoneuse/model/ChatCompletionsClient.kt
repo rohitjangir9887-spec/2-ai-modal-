@@ -56,30 +56,90 @@ class ChatCompletionsClient(
         tools: List<ToolSpec>,
         onTextDelta: (String) -> Unit,
     ): ModelTurn {
-        var effort = options.effort.takeIf { effortKey() !in noEffort }
+        val droppedThisCall = HashSet<String>()
         while (true) {
+            val profile = ModelCapabilityRegistry.profile(endpoint.baseUrl, options.model, optimisticVision = true)
+            val allowImages = profile.canAcceptImages(visionEnabled = true)
+            val cleanInput = if (allowImages) {
+                input
+            } else {
+                ModelCapabilityRegistry.stripImagesFromHistory(
+                    input,
+                    omittedMarker = "[Screenshot omitted: model ${options.model} is text-only]",
+                )
+            }
+            val effort = options.effort.takeIf {
+                effortKey() !in noEffort && profile.supportsParam("reasoning_effort")
+            }
+            val stream = profile.supportsStreaming
+            val body = body(instructions, cleanInput, tools, effort, allowImages, stream, profile)
             try {
-                return send(body(instructions, input, tools, effort), onTextDelta)
+                return send(body, stream, onTextDelta)
             } catch (e: ModelException) {
-                // Some models take no reasoning_effort: drop it for the rest of the session and try again.
-                if (e.status != 400 || effort == null || !rejectsEffort(e.message)) throw e
-                noEffort += effortKey()
-                effort = null
+                when {
+                    ModelErrorClassifier.isMultimodalRejection(e) -> {
+                        ModelCapabilityRegistry.markVisionUnsupported(endpoint.baseUrl, options.model)
+                        throw ModelException(
+                            status = e.status ?: 400,
+                            message = e.message ?: "Model rejected multimodal content",
+                            retryAfterMs = e.retryAfterMs,
+                            code = ModelErrorClassifier.CODE_MULTIMODAL_UNSUPPORTED,
+                            afterOutput = e.afterOutput,
+                            retryable = false,
+                            failure = e.failure,
+                        )
+                    }
+                    effort != null && (rejectsEffort(e.message) || ModelErrorClassifier.rejectedParam(e) == "reasoning_effort") -> {
+                        noEffort += effortKey()
+                        ModelCapabilityRegistry.markParamUnsupported(endpoint.baseUrl, options.model, "reasoning_effort")
+                        continue
+                    }
+                    ModelErrorClassifier.isStreamingRejection(e) && stream && droppedThisCall.add("stream") -> {
+                        ModelCapabilityRegistry.markStreamingUnsupported(endpoint.baseUrl, options.model)
+                        continue
+                    }
+                    ModelErrorClassifier.isToolsRejection(e) -> {
+                        ModelCapabilityRegistry.markToolsUnsupported(endpoint.baseUrl, options.model)
+                        throw e
+                    }
+                    else -> {
+                        val badParam = ModelErrorClassifier.rejectedParam(e)
+                        if (badParam != null && badParam != "tools" && droppedThisCall.add(badParam)) {
+                            ModelCapabilityRegistry.markParamUnsupported(endpoint.baseUrl, options.model, badParam)
+                            continue
+                        }
+                        throw e
+                    }
+                }
             }
         }
     }
 
-    internal fun body(instructions: String, input: List<InputItem>, tools: List<ToolSpec>, effort: String?): String =
+    internal fun body(
+        instructions: String,
+        input: List<InputItem>,
+        tools: List<ToolSpec>,
+        effort: String?,
+        allowImages: Boolean = !ModelCapabilityRegistry.isPinnedTextOnly(options.model),
+        stream: Boolean = true,
+        profile: ModelCapabilityProfile = ModelCapabilityRegistry.profile(endpoint.baseUrl, options.model, optimisticVision = true),
+    ): String =
         buildJsonObject {
+            val effectiveAllowImages = allowImages && !ModelCapabilityRegistry.isPinnedTextOnly(options.model)
+            val sanitizedInput = if (effectiveAllowImages) input else ModelCapabilityRegistry.stripImagesFromHistory(input)
             put("model", options.model)
-            put("messages", messages(instructions, input))
-            if (tools.isNotEmpty()) put("tools", buildJsonArray { tools.forEach { add(it.toJson()) } })
-            put("stream", true)
-            put("stream_options", buildJsonObject { put("include_usage", true) })
+            put("messages", messages(instructions, sanitizedInput, effectiveAllowImages))
+            if (tools.isNotEmpty() && profile.supportsTools && profile.supportsParam("tools")) {
+                put("tools", buildJsonArray { tools.forEach { add(it.toJson()) } })
+            }
+            put("stream", stream)
+            if (stream && profile.supportsParam("stream_options")) {
+                put("stream_options", buildJsonObject { put("include_usage", true) })
+            }
             effort?.let { put("reasoning_effort", it) }
         }.toString()
 
-    private fun messages(instructions: String, input: List<InputItem>): JsonArray = buildJsonArray {
+    private fun messages(instructions: String, input: List<InputItem>, allowImages: Boolean): JsonArray = buildJsonArray {
         add(buildJsonObject {
             put("role", "system")
             put("content", instructions)
@@ -100,7 +160,7 @@ class ChatCompletionsClient(
                             put("content", r.output)
                         })
                     }
-                    if (message.parts.isNotEmpty()) add(user(message.parts))
+                    if (message.parts.isNotEmpty()) add(user(message.parts, allowImages))
                 }
             }
         }
@@ -128,20 +188,43 @@ class ChatCompletionsClient(
         }
     }
 
-    private fun user(parts: List<Conversation.Part>) = buildJsonObject {
+    private fun user(parts: List<Conversation.Part>, allowImages: Boolean) = buildJsonObject {
         put("role", "user")
-        put("content", buildJsonArray {
-            for (part in parts) {
-                add(when (part) {
-                    is Conversation.Part.Text -> textPart(part.text)
-                    is Conversation.Part.Context -> textPart(Conversation.context(part.text))
-                    is Conversation.Part.Image -> buildJsonObject {
-                        put("type", "image_url")
-                        put("image_url", buildJsonObject { put("url", "data:${part.image.mime};base64,${part.image.base64}") })
+        val hasImages = allowImages && parts.any { it is Conversation.Part.Image }
+        if (!hasImages) {
+            val combined = buildString {
+                for (part in parts) {
+                    when (part) {
+                        is Conversation.Part.Text -> {
+                            if (isNotEmpty()) append("\n\n")
+                            append(part.text)
+                        }
+                        is Conversation.Part.Context -> {
+                            if (isNotEmpty()) append("\n\n")
+                            append(Conversation.context(part.text))
+                        }
+                        is Conversation.Part.Image -> {
+                            if (isNotEmpty()) append("\n")
+                            append("[Screenshot omitted: model ${options.model} is text-only]")
+                        }
                     }
-                })
+                }
             }
-        })
+            put("content", combined)
+        } else {
+            put("content", buildJsonArray {
+                for (part in parts) {
+                    add(when (part) {
+                        is Conversation.Part.Text -> textPart(part.text)
+                        is Conversation.Part.Context -> textPart(Conversation.context(part.text))
+                        is Conversation.Part.Image -> buildJsonObject {
+                            put("type", "image_url")
+                            put("image_url", buildJsonObject { put("url", "data:${part.image.mime};base64,${part.image.base64}") })
+                        }
+                    })
+                }
+            })
+        }
     }
 
     private fun textPart(text: String) = buildJsonObject {
@@ -164,40 +247,49 @@ class ChatCompletionsClient(
         message != null && (message.contains("reasoning_effort", ignoreCase = true) ||
             message.contains("reasoning effort", ignoreCase = true) || message.contains("reasoningEffort", ignoreCase = true))
 
-    private suspend fun send(body: String, onTextDelta: (String) -> Unit): ModelTurn {
+    private suspend fun send(body: String, streaming: Boolean, onTextDelta: (String) -> Unit): ModelTurn {
+        val normalizedBase = if (endpoint.baseUrl.endsWith('/')) endpoint.baseUrl else "${endpoint.baseUrl}/"
         val request = Request.Builder()
-            .url(endpoint.baseUrl + "chat/completions")
+            .url(normalizedBase + "chat/completions")
             .apply { if (apiKey.isNotBlank()) header("Authorization", "Bearer $apiKey") }
             .post(body.toRequestBody(JSON_MEDIA_TYPE))
             .build()
         try {
-            return withContext(Dispatchers.IO) { cancellable(request, onTextDelta) }
+            return withContext(Dispatchers.IO) { cancellable(request, streaming, onTextDelta) }
         } catch (e: ModelException) {
-            if (e.status == 401 || e.status == 403) throw ModelException(e.status, endpoint.unauthorizedMessage)
+            if (e.status == 401 || e.status == 403) throw ModelException(e.status, endpoint.unauthorizedMessage, retryable = false)
             throw e
         }
     }
 
-    private suspend fun cancellable(request: Request, onTextDelta: (String) -> Unit): ModelTurn = coroutineScope {
+    private suspend fun cancellable(request: Request, streaming: Boolean, onTextDelta: (String) -> Unit): ModelTurn = coroutineScope {
         val call = http.newCall(request)
         val watcher = launch(start = CoroutineStart.UNDISPATCHED) {
             try { awaitCancellation() } finally { call.cancel() }
         }
         try {
-            stream(call, Accumulator(onTextDelta))
+            stream(call, streaming, Accumulator(onTextDelta))
         } finally {
             watcher.cancel()
         }
     }
 
     /** Blocking; run on an IO dispatcher. Cancelling the coroutine cancels the HTTP call. */
-    private suspend fun stream(call: Call, acc: Accumulator): ModelTurn {
+    private suspend fun stream(call: Call, streaming: Boolean, acc: Accumulator): ModelTurn {
         try {
             call.execute().use { response ->
                 acc.firstByteNs = System.nanoTime()
                 if (!response.isSuccessful) {
                     val text = try { response.body?.string().orEmpty() } catch (e: IOException) { "" }
-                    throw ModelException(response.code, errorMessage(text))
+                    val code = response.code
+                    val retryAfter = NvidiaNimClient.retryAfterMs(response)
+                    val nonRetryable = code == 400 || code == 401 || code == 403 || code == 404 || code == 422
+                    throw ModelException(code, errorMessage(text), retryAfterMs = retryAfter, retryable = !nonRetryable)
+                }
+                val contentType = response.header("Content-Type").orEmpty().lowercase()
+                if (!streaming || "application/json" in contentType) {
+                    val bodyText = response.body?.string().orEmpty()
+                    return parseNonStreamingJson(bodyText, acc)
                 }
                 val source = response.body?.source() ?: throw ModelException(null, "stream ended early", failure = ModelFailure.STREAM_ENDED)
                 val parser = SseParser()
@@ -216,6 +308,15 @@ class ChatCompletionsClient(
             currentCoroutineContext().ensureActive() // a cancelled call surfaces as IOException
             throw ModelException(null, "Network error: ${e.message}", failure = ModelFailure.NETWORK)
         }
+    }
+
+    private fun parseNonStreamingJson(rawBody: String, acc: Accumulator): ModelTurn {
+        val ok = acc.chunk(rawBody)
+        if (acc.finished || ok) return acc.turn()
+        // Treat complete JSON object with choices even without finish_reason as valid non-streaming answer.
+        val parsed = runCatching { json.parseToJsonElement(rawBody).jsonObject }.getOrNull()
+        if (parsed?.get("choices") != null) return acc.turn()
+        throw ModelException(null, "Response missing choices", failure = ModelFailure.BAD_RESPONSE)
     }
 
     private fun errorMessage(body: String): String {
