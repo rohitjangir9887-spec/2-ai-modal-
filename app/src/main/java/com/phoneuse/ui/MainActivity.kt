@@ -710,8 +710,8 @@ private fun AppRoot(
 
         when (screen) {
             Screen.TASK_DETAILS -> Box(Modifier.fillMaxSize().windowInsetsPadding(topInsets), contentAlignment = Alignment.TopCenter) {
-                val recentCheckpoint = remember(resumeTick) { AppGraph.checkpoints.listRecent(1).firstOrNull() }
-                val currentTask = recentCheckpoint ?: TaskCheckpoint(
+                val recentCheckpoints by AppGraph.checkpoints.recent.collectAsState()
+                val currentTask = recentCheckpoints.firstOrNull() ?: TaskCheckpoint(
                     taskId = "idle",
                     conversationId = current ?: 0L,
                     prompt = tr("No active task", "진행 중인 작업 없음"),

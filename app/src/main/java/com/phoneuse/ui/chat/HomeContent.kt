@@ -61,7 +61,7 @@ data class QuickAction(
 
 val QUICK_ACTIONS get() = listOf(
     QuickAction(tr("Hey Juli", "줄리 음성"), tr("Hey Juli, what can you do?", "헤이 줄리, 무엇을 도와줄 수 있어?"), { PuIcons.Mic }, accent = true, short = tr("Hey Juli", "줄리")),
-    QuickAction(tr("Task Progress", "작업 현황"), tr("Show current task progress and status", "현재 작업 진행 상황 보여줘"), { PuIcons.Sparkle }, short = tr("Progress", "현황")),
+    QuickAction(tr("Task Progress", "작업 현황"), tr("Show current task progress and status", "현재 작업 진행 상황 보여줘"), { PuIcons.Step }, short = tr("Progress", "현황")),
     QuickAction(tr("Find nearby", "근처 찾기"), tr("Find a pharmacy that's open nearby", "근처에 문 연 약국 찾아줘"), { PuIcons.Pin }, short = tr("Nearby", "근처")),
     QuickAction(tr("When to go?", "언제 나가?"), tr("I'm meeting at Gangnam Station at 7. When should I leave?", "7시에 강남역 약속인데 언제 나가야 돼?"), { PuIcons.Route }, short = tr("Directions", "길찾기")),
     QuickAction(tr("Find photos", "사진 찾기"), tr("Sort today's photos into folders by date", "오늘 찍은 사진 날짜별 폴더로 정리해줘"), { PuIcons.Photo }, short = tr("Photos", "사진")),

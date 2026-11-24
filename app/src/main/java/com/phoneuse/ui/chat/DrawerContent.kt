@@ -133,7 +133,7 @@ fun DrawerContent(
                     .padding(horizontal = 14.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Icon(PuIcons.Sparkle, null, tint = c.accentText, modifier = Modifier.size(18.dp))
+                Icon(PuIcons.Step, null, tint = c.accentText, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(10.dp))
                 Text(tr("Task Details Dashboard", "작업 상세 대시보드"), Modifier.weight(1f), fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = c.text)
                 Text(tr("Live", "실시간"), fontSize = 12.sp, color = c.accentText, fontWeight = FontWeight.Medium)

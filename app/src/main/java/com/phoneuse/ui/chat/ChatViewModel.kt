@@ -45,6 +45,9 @@ interface ChatRunner {
     ): Boolean
     fun steer(text: String): Boolean
     fun stop()
+    fun pause(): Boolean = false
+    fun resume(): Boolean = false
+    fun togglePause(): Boolean = false
 
     /** Stops the run and returns once it has fully ended (its last writes done). */
     suspend fun stopAndWait() = stop()
@@ -71,6 +74,9 @@ fun AgentRunner.asChatRunner(): ChatRunner {
             (if (fromCard) Source.CARD else Source.APP).let { source -> runner.send(conversationId, text, source, source.allowed(attachments)) }
         override fun steer(text: String) = runner.steer(text)
         override fun stop() = runner.stop()
+        override fun pause() = runner.setPaused(true)
+        override fun resume() = runner.setPaused(false)
+        override fun togglePause() = runner.togglePause()
         override suspend fun stopAndWait() = runner.stopAndWait()
         override fun answer(cardId: Long, text: String) = runner.chatGate.answer(cardId, text)
     }
@@ -355,9 +361,9 @@ class ChatViewModel(
 
     fun stop() = runner.stop()
 
-    fun pause() = runner.setPaused(true)
+    fun pause() = runner.pause()
 
-    fun resume() = runner.setPaused(false)
+    fun resume() = runner.resume()
 
     fun togglePause() = runner.togglePause()
 
