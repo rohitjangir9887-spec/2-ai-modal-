@@ -73,4 +73,21 @@ class LiveVoiceSessionTest {
         assertFalse(detector.evaluate("Hey Juli"))
         assertEquals(1, triggers)
     }
+
+    @Test
+    fun liveVoiceSessionMuteAndPhaseTransitions() {
+        val session = LiveVoiceSession()
+        assertEquals(LiveVoicePhase.IDLE, session.phase.value)
+        assertFalse(session.isMuted.value)
+
+        assertTrue(session.toggleMute())
+        assertTrue(session.isMuted.value)
+
+        assertFalse(session.toggleMute())
+        assertFalse(session.isMuted.value)
+
+        session.interruptSpeech()
+        assertEquals(LiveVoicePhase.LISTENING, session.phase.value)
+        assertEquals(0.0f, session.audioAmplitude.value, 0.001f)
+    }
 }

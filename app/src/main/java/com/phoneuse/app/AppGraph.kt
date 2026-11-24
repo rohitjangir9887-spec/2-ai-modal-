@@ -150,6 +150,7 @@ object AppGraph {
             app, settings, http, chats, uiVisible, usage, memories, memories,
             SqliteConversationSearch(app), connectors, checkpoints, taskLogs, taskQueue,
         )
+        com.phoneuse.voice.LiveVoiceSession.shared.attach(runner)
         // A run the previous process died in left its question unanswered: say so in that conversation.
         val startedAt = System.currentTimeMillis()
         scope.launch {

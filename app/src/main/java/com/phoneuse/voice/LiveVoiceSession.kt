@@ -5,7 +5,9 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import com.phoneuse.app.AgentRunner
+import com.phoneuse.app.AppGraph
 import com.phoneuse.app.Source
+import com.phoneuse.chat.MessageRole
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -15,12 +17,13 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * ChatGPT-style realtime duplex conversational voice session.
+ * ChatGPT-style realtime duplex conversational voice session for JULI AI.
  *
  * Implements the continuous cycle:
  * IDLE -> LISTENING -> THINKING -> ACTING -> SPEAKING -> LISTENING
@@ -31,14 +34,27 @@ import java.util.concurrent.atomic.AtomicBoolean
  * 3. Live streaming partial transcripts and audio-reactive amplitude.
  * 4. Direct phone automation integration via [JuliVoiceCommandCoordinator] & [AgentRunner].
  * 5. High-quality natural Indian female voice output with polite Hindi/Hinglish phrasing.
+ * 6. Zero-hang pipeline: thinking state terminates reliably via runner stream/completion observation.
  */
 class LiveVoiceSession(
-    private val coordinatorProvider: () -> JuliVoiceCommandCoordinator? = { null },
-    private val agentRunnerProvider: () -> AgentRunner? = { null },
+    private var coordinatorProvider: () -> JuliVoiceCommandCoordinator? = {
+        null
+    },
+    private var agentRunnerProvider: () -> AgentRunner? = {
+        runCatching { AppGraph.runner }.getOrNull()
+    },
 ) {
     companion object {
         private const val TAG = "LiveVoiceSession"
         val shared by lazy { LiveVoiceSession() }
+    }
+
+    fun attach(runner: AgentRunner, coordinator: JuliVoiceCommandCoordinator? = null) {
+        this.agentRunnerProvider = { runner }
+        if (coordinator != null) {
+            this.coordinatorProvider = { coordinator }
+        }
+        Log.i(TAG, "Attached AgentRunner to LiveVoiceSession")
     }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
@@ -71,6 +87,7 @@ class LiveVoiceSession(
     private var activeContext: Context? = null
     private var recognizer: VoiceRecognizer? = null
     private var speakingPulseJob: Job? = null
+    private var runnerObservationJob: Job? = null
     private val isLiveActive = AtomicBoolean(false)
 
     init {
@@ -82,6 +99,11 @@ class LiveVoiceSession(
     }
 
     fun startSession(context: Context, conversationId: Long? = null) {
+        if (isLiveActive.get() && activeContext != null) {
+            _activeConversationId.value = conversationId
+            Log.i(TAG, "Live voice session already active; updated conversationId=$conversationId")
+            return
+        }
         activeContext = context.applicationContext
         _activeConversationId.value = conversationId
         _errorMessage.value = null
@@ -96,6 +118,8 @@ class LiveVoiceSession(
 
     fun stopSession() {
         isLiveActive.set(false)
+        runnerObservationJob?.cancel()
+        runnerObservationJob = null
         stopSpeakingPulse()
         recognizer?.destroy()
         recognizer = null
@@ -125,6 +149,8 @@ class LiveVoiceSession(
      * and re-arms listening for the user's interruption.
      */
     fun interruptSpeech() {
+        runnerObservationJob?.cancel()
+        runnerObservationJob = null
         stopSpeakingPulse()
         KokoroVoiceEngine.stop()
         VoiceSessionManager.shared.bargeIn()
@@ -172,14 +198,12 @@ class LiveVoiceSession(
     private fun onSpeechPartial(partial: String) {
         if (!isLiveActive.get()) return
         _partialTranscript.value = partial
-        // Live audio level simulation from partial speech activity
         _audioAmplitude.value = (0.3f + (partial.length % 5) * 0.12f).coerceIn(0.2f, 0.95f)
     }
 
     private fun onSpeechFinal(text: String) {
         val cleaned = text.trim()
         if (cleaned.isBlank()) {
-            // Re-arm listening if no speech was heard
             if (isLiveActive.get() && !_isMuted.value) {
                 triggerListening()
             }
@@ -198,46 +222,52 @@ class LiveVoiceSession(
     private fun processSpokenInput(input: String) {
         val coordinator = coordinatorProvider() ?: JuliVoiceCommandCoordinator(
             context = activeContext,
-            agentRunner = agentRunnerProvider(),
+            agentRunner = agentRunnerProvider() ?: runCatching { AppGraph.runner }.getOrNull(),
             voiceSessionManager = VoiceSessionManager.shared,
         )
 
         val command = coordinator.classify(input)
         Log.i(TAG, "Voice input classified as: ${command.type} (prompt='${command.cleanedPrompt}')")
 
-        // Handle direct task actions (STOP, PAUSE, RESUME, MODIFY, REPLACE, QUEUE, ANSWER)
         when (command.type) {
             VoiceCommandType.STOP -> {
-                agentRunnerProvider()?.stop()
+                val runner = agentRunnerProvider() ?: runCatching { AppGraph.runner }.getOrNull()
+                runner?.stop()
                 speakReply(JuliPersonality.onTaskStopped())
             }
 
             VoiceCommandType.PAUSE -> {
-                agentRunnerProvider()?.taskQueue?.setPaused(true)
+                val runner = agentRunnerProvider() ?: runCatching { AppGraph.runner }.getOrNull()
+                runner?.taskQueue?.setPaused(true)
                 speakReply(JuliPersonality.onTaskPaused())
             }
 
             VoiceCommandType.RESUME -> {
-                agentRunnerProvider()?.taskQueue?.setPaused(false)
+                val runner = agentRunnerProvider() ?: runCatching { AppGraph.runner }.getOrNull()
+                runner?.taskQueue?.setPaused(false)
                 speakReply(JuliPersonality.onTaskResumed())
             }
 
             VoiceCommandType.MODIFY -> {
                 val reply = JuliPersonality.onTaskModified(command.cleanedPrompt)
-                speakReply(reply)
-                dispatchToRunner(command.cleanedPrompt)
+                speakReply(reply) {
+                    dispatchToRunner(command.cleanedPrompt)
+                }
             }
 
             VoiceCommandType.REPLACE -> {
-                agentRunnerProvider()?.stop()
+                val runner = agentRunnerProvider() ?: runCatching { AppGraph.runner }.getOrNull()
+                runner?.stop()
                 val reply = JuliPersonality.onTaskReplaced(command.cleanedPrompt)
-                speakReply(reply)
-                dispatchToRunner(command.cleanedPrompt)
+                speakReply(reply) {
+                    dispatchToRunner(command.cleanedPrompt)
+                }
             }
 
             VoiceCommandType.QUEUE -> {
                 val convId = _activeConversationId.value
-                agentRunnerProvider()?.taskQueue?.enqueue(convId, command.cleanedPrompt, Source.ASSIST)
+                val runner = agentRunnerProvider() ?: runCatching { AppGraph.runner }.getOrNull()
+                runner?.taskQueue?.enqueue(convId, command.cleanedPrompt, Source.APP)
                 speakReply(JuliPersonality.onTaskQueued(command.cleanedPrompt))
             }
 
@@ -246,11 +276,11 @@ class LiveVoiceSession(
             }
 
             VoiceCommandType.STATUS -> {
-                val runner = agentRunnerProvider()
+                val runner = agentRunnerProvider() ?: runCatching { AppGraph.runner }.getOrNull()
                 val isRunning = runner?.running?.value == true
                 val curTask = runner?.currentTask?.value.orEmpty()
                 val reply = if (isRunning && curTask.isNotBlank()) {
-                    "Abhi task chal raha hai: $curTask. Sab theek se complete ho raha hai."
+                    "Abhi task chal raha hai: $curTask. Sab theek se execute ho raha hai."
                 } else if (isRunning) {
                     "Task chal raha hai, main phone par screen automate kar rahi hoon."
                 } else {
@@ -260,7 +290,6 @@ class LiveVoiceSession(
             }
 
             VoiceCommandType.START -> {
-                // Check if user is asking conversational question or ordering a phone task
                 val prompt = command.cleanedPrompt.ifBlank { input }
                 val isPhoneTask = command.targetApp != null || isAutomationRequest(prompt)
 
@@ -271,7 +300,6 @@ class LiveVoiceSession(
                         dispatchToRunner(prompt)
                     }
                 } else {
-                    // Conversational AI reasoning
                     dispatchToRunner(prompt)
                 }
             }
@@ -288,10 +316,98 @@ class LiveVoiceSession(
         return automationTriggers.any { lower.contains(it) }
     }
 
-    private fun dispatchToRunner(text: String) {
-        val runner = agentRunnerProvider() ?: return
+    private fun dispatchToRunner(prompt: String) {
+        val runner = agentRunnerProvider() ?: runCatching { AppGraph.runner }.getOrNull()
+        if (runner == null) {
+            Log.e(TAG, "dispatchToRunner: AgentRunner unavailable")
+            speakReply("System error: AI runner available nahi hai. Kripya app restart karein.")
+            return
+        }
+
         val convId = _activeConversationId.value
-        runner.send(convId, text, Source.ASSIST)
+        _phase.value = LiveVoicePhase.THINKING
+        _lastAssistantReply.value = ""
+
+        runnerObservationJob?.cancel()
+        runnerObservationJob = scope.launch {
+            var replyCollected = ""
+            var hasStartedRunning = false
+            val startTime = System.currentTimeMillis()
+            val maxThinkingTimeoutMs = 45_000L
+
+            val streamJob = launch {
+                runner.streamingText.collect { text ->
+                    if (text.isNotBlank()) {
+                        replyCollected = text
+                        _lastAssistantReply.value = text
+                    }
+                }
+            }
+
+            try {
+                // Use Source.APP so execution never fails on missing accessibility overlay
+                val launched = runner.send(convId, prompt, Source.APP)
+                if (!launched) {
+                    Log.w(TAG, "runner.send returned false (already running or rejected)")
+                    streamJob.cancel()
+                    if (runner.running.value) {
+                        speakReply("Ek task pehle se execute ho raha hai. Aap Stop ya Pause bol sakte hain.")
+                    } else {
+                        speakReply("Task start nahi ho paya. Kripya dobara koshish karein.")
+                    }
+                    return@launch
+                }
+
+                while (isActive) {
+                    val isRunning = runner.running.value
+                    if (isRunning) {
+                        hasStartedRunning = true
+                    }
+                    if (hasStartedRunning && !isRunning) {
+                        Log.i(TAG, "Runner completed execution")
+                        break
+                    }
+                    if (System.currentTimeMillis() - startTime > maxThinkingTimeoutMs) {
+                        Log.w(TAG, "Thinking timeout reached (${maxThinkingTimeoutMs}ms)")
+                        break
+                    }
+                    delay(100)
+                }
+            } catch (ce: CancellationException) {
+                streamJob.cancel()
+                throw ce
+            } catch (e: Exception) {
+                Log.e(TAG, "Error executing prompt in runner", e)
+            } finally {
+                streamJob.cancel()
+            }
+
+            var finalText = replyCollected.trim()
+            if (finalText.isBlank()) {
+                finalText = fetchLatestAssistantMessage(convId).orEmpty()
+            }
+            if (finalText.isBlank()) {
+                finalText = if (hasStartedRunning) {
+                    "Aapka task pura ho gaya hai."
+                } else {
+                    "Kshama karein, is request ka uttar prapt nahi ho saka. Kripya dobara puchiye."
+                }
+            }
+
+            Log.i(TAG, "Speaking assistant response: ${finalText.take(80)}...")
+            speakReply(finalText)
+        }
+    }
+
+    private suspend fun fetchLatestAssistantMessage(conversationId: Long?): String? {
+        val targetId = conversationId ?: runCatching { AppGraph.runner.activeConversation.value }.getOrNull() ?: return null
+        return try {
+            val messages = AppGraph.chats.messages(targetId).first()
+            messages.lastOrNull { it.role == MessageRole.ASSISTANT }?.text?.trim()?.takeIf { it.isNotBlank() }
+        } catch (e: Exception) {
+            Log.w(TAG, "fetchLatestAssistantMessage error for $targetId", e)
+            null
+        }
     }
 
     fun speakReply(text: String, onAfterSpoken: (() -> Unit)? = null) {
@@ -338,7 +454,6 @@ class LiveVoiceSession(
             var tick = 0
             while (isActive && _phase.value == LiveVoicePhase.SPEAKING) {
                 tick++
-                // Organic breathing / wave pulse between 0.35 and 0.85
                 val level = 0.35f + 0.5f * kotlin.math.abs(kotlin.math.sin(tick * 0.25f))
                 _audioAmplitude.value = level
                 delay(60)

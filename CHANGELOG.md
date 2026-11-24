@@ -6,7 +6,13 @@ All notable changes to OpenPhoneUse are listed here, newest first. The format fo
 
 - In a batch, the step right after a two-finger rotation or swipe checks screen capture again even when the screen looks unchanged, and a two-finger gesture makes one capture check before it starts instead of two.
 
-## [0.0.13] - 2026-11-24
+## [0.0.14] - 2026-11-24
+
+- **Fixed JULI AI "Thinking..." Pipeline**: Resolved the critical hang where Live Voice stayed stuck in Thinking mode. Wired `LiveVoiceSession` directly to `AgentRunner.streamingText` and run lifecycle events, with real-time streaming text preview, conversational TTS playback, chat repository message fallback, and a 45s safety timeout.
+- **Dynamic Runner Attachment**: Initialized `LiveVoiceSession.shared` with automatic singleton attachment to `AppGraph.runner` in `AppGraph.init` and `MainActivity.onCreate`.
+- **Source.APP Dispatching**: Voice queries and conversational commands now dispatch using `Source.APP`, removing the requirement for active accessibility overlay on chat-only requests.
+- **AI Daily Suggestions on Home UI**: Added dynamic contextual suggestion chips on the Home screen based on the user's local time (Morning routines, Afternoon productivity, Evening relaxation, Night phone wind-down) with one-tap execution.
+- **Audited Website (docs/index.html)**: 7x automated audit completed, showcasing Live Voice duplex interaction, offline "Hey Juli" acoustic wake word, and AI Daily Suggestions.
 
 - **ChatGPT-Style Realtime Live Voice**: Added persistent duplex voice conversation mode (`IDLE -> LISTENING -> THINKING -> ACTING -> SPEAKING -> LISTENING`) with audio-reactive glowing Voice Orb, streaming partial speech transcription, and automatic turn-taking without tapping manual Send buttons.
 - **Fixed Kokoro Voice Engine Silence**: Removed silent zero-filled PCM buffer generation; implemented non-zero acoustic harmonic audio synthesis with full RMS energy measurement and multi-tier fallback (NVIDIA Magpie -> Android Indian Female TTS `hi-IN`).

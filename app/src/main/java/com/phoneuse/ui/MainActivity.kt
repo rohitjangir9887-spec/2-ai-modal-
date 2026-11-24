@@ -147,6 +147,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+        runCatching { com.phoneuse.voice.LiveVoiceSession.shared.attach(AppGraph.runner) }
         if (savedInstanceState == null) openRequest = conversationOf(intent)
         if (savedInstanceState == null) nudgeRequest = nudgeOf(intent)
         if (savedInstanceState == null) screenRequest = screenOf(intent)
