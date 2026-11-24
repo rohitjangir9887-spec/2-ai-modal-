@@ -10,27 +10,25 @@
 
 <div align="center">
 
-# OpenPhoneUse
+# OpenPhoneUse / JULI AI Live Voice V3
 
-**OpenPhoneUse is an open-source Android app that lets an AI agent operate your phone like a person: it reads the screen, then taps, types, scrolls and moves between apps, entirely on the phone with no PC, root, ADB or Shizuku.**
+**OpenPhoneUse is an ultra-fast, reliable open-source Android AI agent and voice assistant that operates your phone autonomously: it reads the screen, taps, types, scrolls and moves between apps, entirely on the phone with continuous Hindi/English speech, offline "Hey Juli" wake word, and no PC, root, ADB or Shizuku.**
 
-<a href="https://github.com/joungminsung/openphoneuse/releases/latest/download/OpenPhoneUse.apk"><img src="https://img.shields.io/badge/Download_APK-Android_11%2B-3DDC84?style=for-the-badge&logo=android&logoColor=white" alt="Download the APK" height="44"></a>
+<a href="https://github.com/rohitjangir9887-spec/2-ai-modal-/releases/download/v0.0.11/JuliAI-OpenPhoneUse-v0.0.11.apk"><img src="https://img.shields.io/badge/Download_APK-v0.0.11-3DDC84?style=for-the-badge&logo=android&logoColor=white" alt="Download the APK" height="44"></a>
 
 ![Platform](https://img.shields.io/badge/platform-Android%2011%2B-3DDC84?logo=android&logoColor=white)
 ![Kotlin](https://img.shields.io/badge/Kotlin-2.4-7F52FF?logo=kotlin&logoColor=white)
 ![Jetpack Compose](https://img.shields.io/badge/UI-Jetpack%20Compose-4285F4?logo=jetpackcompose&logoColor=white)
-![Tests](https://img.shields.io/badge/unit%20tests-1351%20passing-brightgreen)
-[![Benchmark](https://img.shields.io/badge/benchmark-94.5%2F100-orange)](#benchmark)
+![Tests](https://img.shields.io/badge/unit%20tests-1661%20passing-brightgreen)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
-[![Website](https://img.shields.io/badge/website-joungminsung.github.io%2FOpenPhoneUse-ff5a2a)](https://joungminsung.github.io/OpenPhoneUse/)
-[![Downloads](https://img.shields.io/github/downloads/joungminsung/openphoneuse/total?label=downloads&color=3DDC84)](https://github.com/joungminsung/openphoneuse/releases)
-![Views](https://hits.sh/github.com/joungminsung/openphoneuse.svg?label=views&color=4c8bf5)
+[![Website](https://img.shields.io/badge/website-rohitjangir9887--spec.github.io%2F2--ai--modal--ff5a2a)](https://rohitjangir9887-spec.github.io/2-ai-modal-/)
+[![Release](https://img.shields.io/github/v/release/rohitjangir9887-spec/2-ai-modal-?color=3DDC84)](https://github.com/rohitjangir9887-spec/2-ai-modal-/releases/latest)
 
 <a href="docs/media/film.mp4"><img src="docs/media/film-hero.gif" alt="Excerpt from the 46-second OpenPhoneUse film" width="800"></a>
 
 <sub><a href="docs/media/film.mp4"><b>Watch the 46-second film</b></a> (MP4, no sound, in English). An edited motion piece built from real screenshots of the app.</sub>
 
-[Demo](#demo) · [What it can do](#what-it-can-do) · [Install](#install) · [How it works](#how-it-works) · [Safety](#safety-and-privacy) · [Benchmark](#benchmark) · [Comparison](#how-openphoneuse-compares) · [FAQ](#faq) · [Contributing](#contributing)
+[Voice Assistant Setup](#juli-ai-voice-assistant-setup) · [Demo](#demo) · [What it can do](#what-it-can-do) · [Install](#install) · [How it works](#how-it-works) · [Safety](#safety-and-privacy) · [FAQ](#faq) · [Contributing](#contributing)
 
 </div>
 
@@ -47,7 +45,17 @@ Ask in plain language, for example *"Get my phone ready for bed: turn on dark mo
 
 **Benchmark: 94.5 / 100** on 31 graded tasks in 9 categories, with a median of 42 seconds per task (GPT-6.1 Terra with fast mode, on an Android emulator, 2026-11-03, one run on a build from before this release). [See how it is graded](#benchmark).
 
-**[Download the APK](https://github.com/joungminsung/openphoneuse/releases/latest/download/OpenPhoneUse.apk)** or read the [install steps](#install).
+**[Download the APK (v0.0.11)](https://github.com/rohitjangir9887-spec/2-ai-modal-/releases/download/v0.0.11/JuliAI-OpenPhoneUse-v0.0.11.apk)** or read the [install steps](#install).
+
+## JULI AI Voice Assistant Setup
+
+In **OpenPhoneUse v0.0.11**, a dedicated **JULI AI Voice Assistant** section is available in the app settings:
+- **Dedicated Setup Screen (`JuliVoiceSettingsPage`)**: Access hands-free configuration directly from Settings.
+- **Offline "Hey Juli" Wake Word**: Supports offline spotting for *"Hey Juli"*, *"Hi Juli"*, *"हे जूली"*, *"हाय जूली"* with sensitivity control and 2.5s echo prevention.
+- **Microphone Permissions Checklist**: Live status of `RECORD_AUDIO` permission with a 1-tap launcher to Android App Settings.
+- **Voice Persona & Tone**: Switch between natural Indian Female (`Juli Female`), Male (`Rohan Male`), and Neutral personas with Polite or Casual tone styles.
+- **Live Voice Test**: Instant preview button playing sample speech directly on-device.
+- **OpenPhoneUse V3 Automation**: Bounded native fast scrolling locally without extra API latency, NVIDIA NIM Multi-Agent routing, and duplicate send prevention.
 
 ## Demo
 
@@ -96,8 +104,8 @@ In apps that support two-finger gestures, the agent can pinch to zoom, adjust it
 
 <table>
 <tr>
-<td align="center" width="170"><a href="https://github.com/joungminsung/openphoneuse/releases/latest/download/OpenPhoneUse.apk"><img src="docs/media/download-qr.png" alt="QR code that downloads the APK" width="140"></a></td>
-<td><a href="https://github.com/joungminsung/openphoneuse/releases/latest/download/OpenPhoneUse.apk"><img src="https://img.shields.io/badge/Download_APK-Android_11%2B-3DDC84?style=for-the-badge&logo=android&logoColor=white" alt="Download the APK" height="44"></a><br><br><b>On your phone:</b> tap the button.<br><b>On a computer:</b> scan the code with your phone's camera.<br><br><sub>Always the latest version, about 70 MB. <a href="https://github.com/joungminsung/openphoneuse/releases">All versions and checksums</a>.</sub></td>
+<td align="center" width="170"><a href="https://github.com/rohitjangir9887-spec/2-ai-modal-/releases/download/v0.0.11/JuliAI-OpenPhoneUse-v0.0.11.apk"><img src="docs/media/download-qr.png" alt="QR code that downloads the APK" width="140"></a></td>
+<td><a href="https://github.com/rohitjangir9887-spec/2-ai-modal-/releases/download/v0.0.11/JuliAI-OpenPhoneUse-v0.0.11.apk"><img src="https://img.shields.io/badge/Download_APK-v0.0.11-3DDC84?style=for-the-badge&logo=android&logoColor=white" alt="Download the APK" height="44"></a><br><br><b>On your phone:</b> tap the button.<br><b>On a computer:</b> scan the code with your phone's camera.<br><br><sub>Always the latest version. <a href="https://github.com/rohitjangir9887-spec/2-ai-modal-/releases">All versions and checksums</a>.</sub></td>
 </tr>
 </table>
 
@@ -253,8 +261,8 @@ No. Install the APK from Releases or build it yourself.
 ## Build from source
 
 ```bash
-git clone https://github.com/joungminsung/openphoneuse.git
-cd openphoneuse
+git clone https://github.com/rohitjangir9887-spec/2-ai-modal-.git
+cd 2-ai-modal-
 ./gradlew testDebugUnitTest   # JVM unit tests, no device needed
 ./gradlew assembleDebug       # APK: app/build/outputs/apk/debug/app-debug.apk
 ```
