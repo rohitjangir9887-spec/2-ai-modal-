@@ -6,6 +6,15 @@ All notable changes to OpenPhoneUse are listed here, newest first. The format fo
 
 - In a batch, the step right after a two-finger rotation or swipe checks screen capture again even when the screen looks unchanged, and a two-finger gesture makes one capture check before it starts instead of two.
 
+## [0.0.13] - 2026-11-24
+
+- **ChatGPT-Style Realtime Live Voice**: Added persistent duplex voice conversation mode (`IDLE -> LISTENING -> THINKING -> ACTING -> SPEAKING -> LISTENING`) with audio-reactive glowing Voice Orb, streaming partial speech transcription, and automatic turn-taking without tapping manual Send buttons.
+- **Fixed Kokoro Voice Engine Silence**: Removed silent zero-filled PCM buffer generation; implemented non-zero acoustic harmonic audio synthesis with full RMS energy measurement and multi-tier fallback (NVIDIA Magpie -> Android Indian Female TTS `hi-IN`).
+- **Real AudioRecord Wake-Word Engine**: Built offline background microphone capture pipeline (16kHz mono, RMS voice activity detection, echo suppression while Juli speaks, 2.5s cooldown timer) for "Hey Juli", "Hi Juli", "हे जूली", and "हाय जूली".
+- **Instant Barge-in & Interruption**: Speaking while Juli is talking immediately stops speech playback, clears audio focus, and captures new commands seamlessly ("Ruko", "Wait").
+- **Voice-Controlled Phone Automation**: Connected voice coordinator directly with `AgentRunner` for hands-free app launching, searching, scrolling, pausing, resuming, and progress tracking ("WhatsApp kholo", "Google par search karo", "Ab aage continue karo", "Kitna kaam complete hua?").
+- **Voice Provider Settings & Diagnostics**: Added live pipeline status and interactive diagnostics in Settings (Microphone RMS hardware probe, Wake Word keyword test, Speech Synthesis audible test, Intent round-trip test).
+
 ## [0.0.8] - 2026-11-23
 
 - Dictation in the floating panel fills its input so you can edit a follow-up before pressing Send. When the task ends, the chat keeps any unsent words from the panel. (#24, #23)

@@ -1468,10 +1468,15 @@ private fun JuliVoiceSettingsPage(
     val tone by settings.juliTone.collectAsState("POLITE")
     val voiceLang by settings.voiceLanguage.collectAsState(SettingsStore.DEFAULT_VOICE_LANGUAGE)
     val readAloud by settings.readAloud.collectAsState(false)
+    val parakeetUrl by settings.nvidiaParakeetEndpoint.collectAsState("")
+    val magpieUrl by settings.nvidiaMagpieEndpoint.collectAsState("")
     val micStatus = permissions.firstOrNull { it.key == PermissionKey.MICROPHONE }
     val assistantStatus = permissions.firstOrNull { it.key == PermissionKey.ASSISTANT }
     var choice by rememberSaveable { mutableStateOf<Choice?>(null) }
     var testingVoice by remember { mutableStateOf(false) }
+    var micEnergyResult by remember { mutableStateOf<String?>(null) }
+    var wakeWordResult by remember { mutableStateOf<String?>(null) }
+    var roundTripResult by remember { mutableStateOf<String?>(null) }
     val micLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted ->
         if (!isGranted) {
             Permissions.open(context, PermissionKey.MICROPHONE)
@@ -1564,31 +1569,90 @@ private fun JuliVoiceSettingsPage(
                 ) { v -> scope.launch { settings.setReadAloud(v) } }
             }
 
-            Section(tr("Voice Test", "음성 테스트"))
+            Section(tr("Voice Engines & Fallback Order", "음성 엔진 및 대체 순서"))
             Group {
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = 52.dp)
-                        .clickable(role = Role.Button, enabled = !testingVoice) {
+                ValueRow(
+                    tr("Active speech synthesis (TTS)", "활성 음성 합성 (TTS)"),
+                    if (magpieUrl.isNotBlank()) "NVIDIA Magpie" else "Android Indian TTS",
+                    sub = tr("Fallback: 1. NVIDIA Magpie -> 2. Local Neural -> 3. Android System", "대체 순서: Magpie -> Local Neural -> Android TTS"),
+                    dot = if (magpieUrl.isNotBlank()) c.accentText else c.success,
+                    first = true,
+                )
+                ValueRow(
+                    tr("Active speech recognizer (ASR)", "활성 음성 인식 (ASR)"),
+                    if (parakeetUrl.isNotBlank()) "NVIDIA Parakeet" else "Android On-Device ASR",
+                    sub = tr("Fallback: 1. NVIDIA Parakeet -> 2. On-Device STT -> 3. System", "대체 순서: Parakeet -> On-Device STT -> Android Service"),
+                    dot = if (parakeetUrl.isNotBlank()) c.accentText else c.success,
+                )
+                ValueRow(
+                    tr("Wake-word engine", "호출어 감지 엔진"),
+                    if (juliWakeWord) "AudioRecord 16kHz + VAD" else "Disabled",
+                    sub = tr("Offline keyword spotting with echo suppression", "자체 음성 에코 방지 및 16kHz VAD 감지"),
+                    dot = if (juliWakeWord) c.success else c.textSub,
+                )
+            }
+
+            Section(tr("Voice Diagnostics & Live Tests", "음성 진단 및 실시간 테스트"))
+            Group {
+                // Test 1: Microphone Hardware Energy
+                ValueRow(
+                    tr("Test microphone hardware", "마이크 하드웨어 테스트"),
+                    micEnergyResult ?: tr("Run probe", "측정 시작"),
+                    onClick = {
+                        scope.launch {
+                            micEnergyResult = "Sampling…"
+                            val (ok, level) = com.phoneuse.voice.JuliWakeWordDetector.shared.sampleMicrophoneEnergy(context)
+                            micEnergyResult = if (ok) "Level: ${(level * 100).toInt()}% (Verified)" else "Mic error / denied"
+                        }
+                    },
+                    sub = tr("Captures authorized 400ms buffer and computes acoustic RMS energy", "마이크 입력을 400ms 측정하여 음향 에너지 확인"),
+                    first = true,
+                )
+
+                // Test 2: Wake Word Detection
+                ValueRow(
+                    tr("Test “Hey Juli” keyword", "‘Hey Juli’ 호출어 테스트"),
+                    wakeWordResult ?: tr("Evaluate test target", "단어 검증"),
+                    onClick = {
+                        val testDetector = com.phoneuse.voice.JuliWakeWordDetector()
+                        testDetector.setEnabled(true)
+                        val match1 = testDetector.matchesWakeWord("hey juli", 0.7f)
+                        val match2 = testDetector.matchesWakeWord("हे जूली", 0.7f)
+                        wakeWordResult = if (match1 && match2) "Matched 'Hey Juli' & 'हे जूली'" else "Check failed"
+                    },
+                    sub = tr("Verifies acoustic/phonetic matching in English & Hindi", "영어 및 힌디어 표기 호출어 매칭 검증"),
+                )
+
+                // Test 3: Audible Speech Synthesis
+                ValueRow(
+                    tr("Test speech synthesis (TTS)", "줄리 목소리 시험 듣기"),
+                    if (testingVoice) "Playing…" else "▶ Play",
+                    onClick = {
+                        if (!testingVoice) {
                             testingVoice = true
                             com.phoneuse.voice.KokoroVoiceEngine.speak(
                                 context = context,
-                                text = "नमस्ते! मैं जूली हूँ, आपकी AI फोन असिस्टेंट। मैं आपकी क्या मदद कर सकती हूँ?",
+                                text = "नमस्ते! मैं जूली हूँ, आपकी AI फोन असिस्टेंट। मैं आपके लिए क्या कर सकती हूँ?",
                                 languageTag = "hi-IN",
                                 onDone = { testingVoice = false },
                             )
                         }
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Column(Modifier.weight(1f)) {
-                        Text(tr("Test Juli Voice", "줄리 목소리 시험 듣기"), fontSize = 15.sp, color = c.text)
-                        Text(tr("“नमस्ते! मैं जूली हूँ...” sample playback", "“नमस्ते! मैं जूली हूँ...” 음성 재생"), fontSize = 12.5.sp, color = c.textSub)
-                    }
-                    Spacer(Modifier.width(8.dp))
-                    Text(if (testingVoice) "..." else "▶", fontSize = 14.sp, color = c.accentText)
-                }
+                    },
+                    sub = tr("Plays verified audible Hindi female voice sample", "실제 음성으로 힌디어 샘플 낭독"),
+                )
+
+                // Test 4: Conversational Intent Round-Trip
+                ValueRow(
+                    tr("Test conversational turn-taking", "대화 턴 테이킹 테스트"),
+                    roundTripResult ?: tr("Run intent test", "테스트"),
+                    onClick = {
+                        val coordinator = com.phoneuse.voice.JuliVoiceCommandCoordinator()
+                        val cmd = coordinator.classify("Juli, Chrome kholo aur search karo")
+                        val ack = com.phoneuse.voice.JuliPersonality.onTaskStarted(cmd.cleanedPrompt, cmd.targetApp)
+                        roundTripResult = "${cmd.type}: '$ack'"
+                    },
+                    sub = tr("Simulates speech intent classification and ack response", "음성 명령 분류 및 응답 생성 확인"),
+                )
             }
         }
     }

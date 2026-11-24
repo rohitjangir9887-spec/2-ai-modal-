@@ -26,11 +26,16 @@ data class VoiceLiveState(
  * and guarantees instant TTS barge-in so spoken replies never overlap user speech.
  */
 class VoiceSessionManager(
-    private val onStopSpeech: () -> Unit = {},
-    private val onStartListening: () -> Unit = {},
+    private var onStopSpeech: () -> Unit = {},
+    private var onStartListening: () -> Unit = {},
 ) {
     private val _state = MutableStateFlow(VoiceLiveState())
     val state: StateFlow<VoiceLiveState> = _state.asStateFlow()
+
+    fun attachCallbacks(onStopSpeech: () -> Unit, onStartListening: () -> Unit) {
+        this.onStopSpeech = onStopSpeech
+        this.onStartListening = onStartListening
+    }
 
     fun setContinuousMode(enabled: Boolean) {
         _state.update { it.copy(continuousMode = enabled) }

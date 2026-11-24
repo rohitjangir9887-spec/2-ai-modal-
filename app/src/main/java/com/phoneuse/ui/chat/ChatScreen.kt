@@ -1,6 +1,7 @@
 package com.phoneuse.ui.chat
 
 import com.phoneuse.i18n.tr
+import com.phoneuse.ui.voice.LiveVoiceOverlay
 import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -134,6 +135,7 @@ fun ChatScreen(
     val scope = rememberCoroutineScope()
     val store = remember { AttachmentStore(context) }
     var attachOpen by paneState::attachOpen
+    var liveVoiceOpen by remember { mutableStateOf(false) }
     val focus = remember { FocusRequester() }
     var focusRequest by remember { mutableStateOf(0) }
     LaunchedEffect(focusRequest) {
@@ -306,6 +308,14 @@ fun ChatScreen(
                 attachOpen = attachOpen,
                 onAttach = { attachOpen = !attachOpen },
                 hasAttachments = pending.isNotEmpty(),
+                onOpenLiveVoice = { liveVoiceOpen = true },
+            )
+        }
+
+        if (liveVoiceOpen) {
+            LiveVoiceOverlay(
+                conversationId = current,
+                onDismiss = { liveVoiceOpen = false },
             )
         }
     }

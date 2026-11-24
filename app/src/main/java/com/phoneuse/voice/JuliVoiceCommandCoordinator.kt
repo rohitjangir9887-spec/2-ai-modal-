@@ -33,6 +33,7 @@ enum class VoiceCommandType {
     REPLACE,
     QUEUE,
     ANSWER,
+    STATUS,
 }
 
 data class ClassifiedVoiceCommand(
@@ -97,6 +98,11 @@ class JuliVoiceCommandCoordinator(
         private val ANSWER_PATTERNS = listOf(
             "yes", "no", "confirm", "deny", "send", "haan", "theek hai", "nahi",
             "bhej do", "mat bhejo", "हाँ", "ना", "भेज दो", "मत भेजो", "मंजूर है", "स्वीकार"
+        )
+
+        private val STATUS_PATTERNS = listOf(
+            "kitna kaam", "kya chal raha", "status", "progress", "kitna bacha", "kahan tak hua",
+            "कितना काम", "क्या चल रहा", "प्रोग्रेस", "स्टेटस", "कितना हुआ"
         )
 
         private val APP_ALIASES = mapOf(
@@ -181,7 +187,12 @@ class JuliVoiceCommandCoordinator(
             return ClassifiedVoiceCommand(VoiceCommandType.ANSWER, speechText, cleaned)
         }
 
-        // 7. START (default actionable prompt)
+        // 7. STATUS / PROGRESS
+        if (STATUS_PATTERNS.any { lower.contains(it) }) {
+            return ClassifiedVoiceCommand(VoiceCommandType.STATUS, speechText, cleaned)
+        }
+
+        // 8. START (default actionable prompt)
         var targetApp: String? = null
         for ((alias, pkg) in APP_ALIASES) {
             if (lower.contains(alias)) {
@@ -236,7 +247,7 @@ class JuliVoiceCommandCoordinator(
             VoiceCommandType.MODIFY -> {
                 val reply = personality.onTaskModified(command.cleanedPrompt)
                 speakResponse(reply, onFeedbackSpoken)
-                if (command.cleanedPrompt.isNotBlank() && conversationId != null) {
+                if (command.cleanedPrompt.isNotBlank()) {
                     agentRunner?.send(conversationId, command.cleanedPrompt, Source.ASSIST)
                 }
             }
@@ -245,13 +256,13 @@ class JuliVoiceCommandCoordinator(
                 agentRunner?.stop()
                 val reply = personality.onTaskReplaced(command.cleanedPrompt)
                 speakResponse(reply, onFeedbackSpoken)
-                if (command.cleanedPrompt.isNotBlank() && conversationId != null) {
+                if (command.cleanedPrompt.isNotBlank()) {
                     agentRunner?.send(conversationId, command.cleanedPrompt, Source.ASSIST)
                 }
             }
 
             VoiceCommandType.QUEUE -> {
-                if (command.cleanedPrompt.isNotBlank() && conversationId != null) {
+                if (command.cleanedPrompt.isNotBlank()) {
                     agentRunner?.taskQueue?.enqueue(conversationId, command.cleanedPrompt, Source.ASSIST)
                     val reply = personality.onTaskQueued(command.cleanedPrompt)
                     speakResponse(reply, onFeedbackSpoken)
@@ -264,9 +275,22 @@ class JuliVoiceCommandCoordinator(
                 speakResponse(reply, onFeedbackSpoken)
             }
 
+            VoiceCommandType.STATUS -> {
+                val isRunning = agentRunner?.running?.value == true
+                val curTask = agentRunner?.currentTask?.value.orEmpty()
+                val reply = if (isRunning && curTask.isNotBlank()) {
+                    "Abhi task chal raha hai: $curTask. Sab theek se complete ho raha hai."
+                } else if (isRunning) {
+                    "Task chal raha hai, main phone par screen automate kar rahi hoon."
+                } else {
+                    "Abhi koi task active nahi hai. Aap naya task bol sakte hain."
+                }
+                speakResponse(reply, onFeedbackSpoken)
+            }
+
             VoiceCommandType.START -> {
                 val prompt = command.cleanedPrompt
-                if (prompt.isNotBlank() && conversationId != null) {
+                if (prompt.isNotBlank()) {
                     val reply = personality.onTaskStarted(prompt, command.targetApp)
                     speakResponse(reply, onFeedbackSpoken)
                     agentRunner?.send(conversationId, prompt, Source.ASSIST)

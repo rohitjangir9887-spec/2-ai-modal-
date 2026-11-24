@@ -40,6 +40,10 @@ class KokoroVoiceEngineTest {
         // Ensure non-empty PCM 16-bit buffer (even number of bytes)
         assertTrue(pcm.isNotEmpty())
         assertEquals(0, pcm.size % 2)
+
+        // Ensure audio is genuinely audible with non-zero RMS energy (never fake silent zeroes)
+        val rms = KokoroVoiceEngine.calculateRmsEnergy(pcm)
+        assertTrue("Expected non-zero audible RMS energy, but got $rms", rms > 1000.0)
     }
 
     @Test

@@ -65,4 +65,25 @@ class JuliVoiceCommandCoordinatorTest {
         assertEquals(VoiceCommandType.START, yt.type)
         assertEquals("com.google.android.youtube", yt.targetApp)
     }
+
+    @Test
+    fun classifyDetectsStatusAndProgressCommands() {
+        val s1 = coordinator.classify("Kitna kaam complete hua?")
+        assertEquals(VoiceCommandType.STATUS, s1.type)
+
+        val s2 = coordinator.classify("Juli, kya chal raha hai?")
+        assertEquals(VoiceCommandType.STATUS, s2.type)
+
+        val s3 = coordinator.classify("काम कितना हुआ")
+        assertEquals(VoiceCommandType.STATUS, s3.type)
+    }
+
+    @Test
+    fun classifyDetectsHindiPauseAndResume() {
+        val p = coordinator.classify("Ruko")
+        assertEquals(VoiceCommandType.PAUSE, p.type)
+
+        val r = coordinator.classify("Ab aage continue karo")
+        assertEquals(VoiceCommandType.RESUME, r.type)
+    }
 }

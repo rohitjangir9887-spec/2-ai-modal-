@@ -75,6 +75,7 @@ fun Composer(
     attachOpen: Boolean = false,
     onAttach: (() -> Unit)? = null,
     hasAttachments: Boolean = false,
+    onOpenLiveVoice: (() -> Unit)? = null,
 ) {
     val c = pu
     val voice = key(conversationId) {
@@ -141,6 +142,7 @@ fun Composer(
                             keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
                         )
                     }
+                    if (onOpenLiveVoice != null) IconBtn(PuIcons.Bolt, tr("Live Voice", "실시간 음성"), onClick = onOpenLiveVoice, tint = c.accent)
                     if (showMic) IconBtn(PuIcons.Mic, tr("Voice input", "음성 입력"), onClick = voice::toggle, tint = c.textSub)
                     if (running && hasText) IconBtn(PuIcons.Send, tr("Send instruction", "지시 보내기"), onSend, tint = c.text, iconSize = 20.dp)
                     if (running) StopCircle(onStop) else SendCircle(onSend, enabled = hasText || hasAttachments)

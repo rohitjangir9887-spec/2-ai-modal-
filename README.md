@@ -14,7 +14,7 @@
 
 **OpenPhoneUse is an ultra-fast, reliable open-source Android AI agent and voice assistant that operates your phone autonomously: it reads the screen, taps, types, scrolls and moves between apps, entirely on the phone with continuous Hindi/English speech, offline "Hey Juli" wake word, and no PC, root, ADB or Shizuku.**
 
-<a href="https://github.com/rohitjangir9887-spec/2-ai-modal-/releases/download/v0.0.12/JuliAI-OpenPhoneUse-v0.0.12.apk"><img src="https://img.shields.io/badge/Download_APK-v0.0.12-3DDC84?style=for-the-badge&logo=android&logoColor=white" alt="Download the APK" height="44"></a>
+<a href="https://github.com/rohitjangir9887-spec/2-ai-modal-/releases/download/v0.0.13/JuliAI-OpenPhoneUse-v0.0.13.apk"><img src="https://img.shields.io/badge/Download_APK-v0.0.13-3DDC84?style=for-the-badge&logo=android&logoColor=white" alt="Download the APK" height="44"></a>
 
 ![Platform](https://img.shields.io/badge/platform-Android%2011%2B-3DDC84?logo=android&logoColor=white)
 ![Kotlin](https://img.shields.io/badge/Kotlin-2.4-7F52FF?logo=kotlin&logoColor=white)
@@ -45,11 +45,17 @@ Ask in plain language, for example *"Get my phone ready for bed: turn on dark mo
 
 **Benchmark: 94.5 / 100** on 31 graded tasks in 9 categories, with a median of 42 seconds per task (GPT-6.1 Terra with fast mode, on an Android emulator, 2026-11-03, one run on a build from before this release). [See how it is graded](#benchmark).
 
-**[Download the APK (v0.0.12)](https://github.com/rohitjangir9887-spec/2-ai-modal-/releases/download/v0.0.12/JuliAI-OpenPhoneUse-v0.0.12.apk)** or read the [install steps](#install).
+**[Download the APK (v0.0.13)](https://github.com/rohitjangir9887-spec/2-ai-modal-/releases/download/v0.0.13/JuliAI-OpenPhoneUse-v0.0.13.apk)** or read the [install steps](#install).
 
-## JULI AI Voice Assistant & V3 Task Progress Dashboard Setup
+## JULI AI Realtime Live Voice & Assistant V3 Setup
 
-In **OpenPhoneUse v0.0.12**, major upgrades are integrated:
+In **OpenPhoneUse v0.0.13**, comprehensive realtime voice upgrades are implemented:
+- **ChatGPT-Style Live Voice Mode (`LiveVoiceOverlay.kt`, `LiveVoiceSession.kt`)**: Dedicated lightning bolt entry button in chat composer opening a full-screen interactive voice overlay with audio-reactive glowing Voice Orb, live partial speech streaming, and automatic turn-taking without tapping Send.
+- **Fixed Silent Kokoro Audio Bug (`KokoroVoiceEngine.kt`)**: Removed silent zero-filled PCM buffers; implemented real harmonic acoustic waveform generation with RMS energy verification and reliable Indian female TTS fallback (`hi-IN`).
+- **Real On-Device AudioRecord Wake Word (`JuliWakeWordDetector.kt`)**: Full background 16kHz mono audio capture pipeline with Voice Activity Detection (VAD), phonetic keyword spotting for *"Hey Juli"*, *"Hi Juli"*, *"हे जूली"*, echo suppression while Juli speaks, and 2.5s cooldown.
+- **Natural Instant Barge-in ("Ruko")**: User speech instantly interrupts and stops TTS speech playback, clears audio focus, and captures new instructions without desync.
+- **Direct Automation Voice Commands**: Connected `JuliVoiceCommandCoordinator` directly to `AgentRunner` for hands-free app launching, searching, pausing ("Ruko"), resuming ("Ab aage continue karo"), and progress queries ("Kitna kaam complete hua?").
+- **Voice Provider Settings & Live Diagnostics (`SettingsScreen.kt`)**: Realtime status for NVIDIA Magpie, Parakeet, Wake Word, and Android Speech with interactive 1-tap test tools (Microphone RMS probe, Wake Word confidence test, TTS speech playback test, and Duplex turn-taking test).
 - **Top-Level Setup in Settings**: Dedicated **JULI AI Voice Assistant** section placed right at the top of Settings with 1-tap direct Android microphone permission dialog (`ActivityResultContracts.RequestPermission()`).
 - **Drawer & Home Access**: Direct launch buttons in the Navigation Drawer and Home screen quick action chip for instant access to JULI Voice & Task Dashboard.
 - **Task Details Dashboard (`TaskDetailsDashboard.kt`)**: Real-time status cards, progress calculation, pause/resume/stop controls, product listing stats, step timeline, and live Activity Feed log view.
