@@ -81,6 +81,11 @@ class LiveVoiceSession(
 
     fun isSessionActive(): Boolean = isLiveActive.get()
 
+    /** Keep the voice session alive when Compose navigates from new-chat to a saved conversation. */
+    fun updateConversationId(conversationId: Long?) {
+        if (conversationId != null) _activeConversationId.value = conversationId
+    }
+
     init {
         // Wire callbacks to VoiceSessionManager.shared
         VoiceSessionManager.shared.attachCallbacks(
@@ -326,13 +331,16 @@ class LiveVoiceSession(
             return
         }
         val convId = _activeConversationId.value
+        // Mark the turn pending before launching its job to avoid losing a fast reply.
+        waitingForAgentReply = true
+        expectedConversationId = convId
         // Live Voice is a user-originated chat request, not an unsolicited side-assistant screen capture.
         if (!runner.send(convId, text, Source.APP)) {
+            waitingForAgentReply = false
+            expectedConversationId = null
             speakReply("अभी दूसरा टास्क चल रहा है। उसका काम पूरा होने पर फिर कोशिश करें।")
             return
         }
-        waitingForAgentReply = true
-        expectedConversationId = convId ?: runner.activeConversation.value
     }
 
     fun speakReply(text: String, onAfterSpoken: (() -> Unit)? = null) {
