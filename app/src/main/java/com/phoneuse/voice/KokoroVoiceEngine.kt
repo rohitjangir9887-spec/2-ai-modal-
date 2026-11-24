@@ -68,33 +68,15 @@ object KokoroVoiceEngine {
 
     /**
      * Splits Hindi, Hinglish, and English text into natural clauses and pauses
-     * at sentence markers (।, ., ?, !, comma, semicolon) for chunked streaming synthesis.
+     * at sentence markers (।, ., ?, !, ;, newline) for chunked streaming synthesis.
      */
     fun chunkText(text: String): List<String> {
         val trimmed = text.trim()
         if (trimmed.isEmpty()) return emptyList()
 
-        // Split by Hindi purna viram (।), newline, exclamation, question mark, or period
-        val regex = Regex("""(?<=[।\n?!.;,])\s+""")
-        val rawChunks = trimmed.split(regex)
-        val result = mutableListOf<String>()
-
-        var buffer = StringBuilder()
-        for (part in rawChunks) {
-            val partTrimmed = part.trim()
-            if (partTrimmed.isEmpty()) continue
-
-            if (buffer.length + partTrimmed.length > 120 && buffer.isNotEmpty()) {
-                result.add(buffer.toString().trim())
-                buffer = StringBuilder()
-            }
-            if (buffer.isNotEmpty()) buffer.append(" ")
-            buffer.append(partTrimmed)
-        }
-        if (buffer.isNotEmpty()) {
-            result.add(buffer.toString().trim())
-        }
-        return if (result.isEmpty()) listOf(trimmed) else result
+        val regex = Regex("""(?<=[।\n?!.;])\s*""")
+        val parts = trimmed.split(regex).map { it.trim() }.filter { it.isNotEmpty() }
+        return if (parts.isEmpty()) listOf(trimmed) else parts
     }
 
     /**

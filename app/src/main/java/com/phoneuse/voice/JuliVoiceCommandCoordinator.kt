@@ -146,14 +146,14 @@ class JuliVoiceCommandCoordinator(
         val cleaned = cleanPrompt(speechText)
         val lower = cleaned.lowercase(Locale.ROOT)
 
-        // 1. STOP
-        if (STOP_PATTERNS.any { lower == it || lower.startsWith("$it ") || lower.endsWith(" $it") }) {
-            return ClassifiedVoiceCommand(VoiceCommandType.STOP, speechText, cleaned)
+        // 1. PAUSE (check specific pause phrases before generic stop triggers)
+        if (PAUSE_PATTERNS.any { lower == it || lower.startsWith("$it ") || lower.endsWith(" $it") || lower.contains(it) }) {
+            return ClassifiedVoiceCommand(VoiceCommandType.PAUSE, speechText, cleaned)
         }
 
-        // 2. PAUSE
-        if (PAUSE_PATTERNS.any { lower == it || lower.startsWith("$it ") || lower.endsWith(" $it") }) {
-            return ClassifiedVoiceCommand(VoiceCommandType.PAUSE, speechText, cleaned)
+        // 2. STOP
+        if (STOP_PATTERNS.any { lower == it || lower.startsWith("$it ") || lower.endsWith(" $it") }) {
+            return ClassifiedVoiceCommand(VoiceCommandType.STOP, speechText, cleaned)
         }
 
         // 3. RESUME
