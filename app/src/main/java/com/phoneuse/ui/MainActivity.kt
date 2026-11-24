@@ -110,13 +110,17 @@ import com.phoneuse.ui.theme.isDark
 import com.phoneuse.ui.theme.pu
 import com.phoneuse.widget.WidgetLinks
 import com.phoneuse.widget.WidgetPrompt
+import com.phoneuse.app.TaskCheckpoint
+import com.phoneuse.app.TaskRunStatus
+import com.phoneuse.ui.chat.TaskDetailsDashboard
+import com.phoneuse.ui.chat.StepTimelineItem
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-private enum class Screen { CHAT, SETTINGS, USAGE, MEMORY, CONNECTORS, DIGEST, ROUTINES, NUDGES }
+private enum class Screen { CHAT, SETTINGS, USAGE, MEMORY, CONNECTORS, DIGEST, ROUTINES, NUDGES, TASK_DETAILS }
 
 /** Width from which the conversation list stays on screen (unfolded Fold, tablets). */
 private val WIDE = FoldLayoutPolicy.WIDE_DP.dp
@@ -545,6 +549,7 @@ private fun AppRoot(
     BackHandler(enabled = screen == Screen.CONNECTORS) { screen = Screen.SETTINGS }
     BackHandler(enabled = screen == Screen.DIGEST) { screen = digestFrom }
     BackHandler(enabled = screen == Screen.ROUTINES) { screen = Screen.CHAT }
+    BackHandler(enabled = screen == Screen.TASK_DETAILS) { screen = Screen.CHAT }
     BackHandler(enabled = screen == Screen.NUDGES) { screen = Screen.SETTINGS }
     val routineList by remember { com.phoneuse.routine.RoutineSystem.get(context).store.routines }.collectAsState()
 
@@ -658,6 +663,10 @@ private fun AppRoot(
                 screen = Screen.SETTINGS
                 scope.launch { drawerState.close() }
             },
+            onTaskDetails = {
+                screen = Screen.TASK_DETAILS
+                scope.launch { drawerState.close() }
+            },
             modifier = modifier,
             onRoutines = {
                 screen = Screen.ROUTINES
@@ -700,6 +709,40 @@ private fun AppRoot(
         )
 
         when (screen) {
+            Screen.TASK_DETAILS -> Box(Modifier.fillMaxSize().windowInsetsPadding(topInsets), contentAlignment = Alignment.TopCenter) {
+                val recentCheckpoint = remember(resumeTick) { AppGraph.checkpoints.listRecent(1).firstOrNull() }
+                val currentTask = recentCheckpoint ?: TaskCheckpoint(
+                    taskId = "idle",
+                    conversationId = current ?: 0L,
+                    prompt = tr("No active task", "진행 중인 작업 없음"),
+                    status = TaskRunStatus.COMPLETED,
+                    stepCount = 0,
+                    createdAtMs = System.currentTimeMillis(),
+                    updatedAtMs = System.currentTimeMillis(),
+                )
+                val logs by AppGraph.taskLogs.entries.collectAsState()
+                val liveSteps by vm.liveSteps.collectAsState()
+                val timelineSteps = liveSteps.mapIndexed { idx, s ->
+                    StepTimelineItem(
+                        stepIndex = idx + 1,
+                        title = s.text,
+                        tool = "PhoneAction",
+                        durationMs = 0L,
+                        isSuccess = true,
+                        isRunning = idx == liveSteps.size - 1 && vm.running.value,
+                    )
+                }
+                TaskDetailsDashboard(
+                    task = currentTask,
+                    logs = logs,
+                    steps = timelineSteps,
+                    onPause = { vm.pause() },
+                    onResume = { vm.resume() },
+                    onStop = { vm.stop() },
+                    onBack = { screen = Screen.CHAT },
+                    modifier = Modifier.widthIn(max = 640.dp),
+                )
+            }
             Screen.ROUTINES -> Box(Modifier.fillMaxSize().windowInsetsPadding(topInsets), contentAlignment = Alignment.TopCenter) {
                 RoutinesScreen(
                     onBack = { screen = Screen.CHAT },

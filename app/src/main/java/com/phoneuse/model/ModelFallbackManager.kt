@@ -60,6 +60,11 @@ class ModelFallbackManager(
                 val start = clock()
                 try {
                     val turn = invoker(candidate)
+                    // Validate semantic output BEFORE ModelFallbackManager records success:
+                    // HTTP 200 alone is insufficient; empty text AND zero valid tool calls should trigger safe bounded recovery.
+                    if (turn.text.isNullOrBlank() && turn.calls.isEmpty()) {
+                        throw ModelException(null, "Model reply was empty (zero text and zero tool calls)", failure = ModelFailure.BAD_RESPONSE, retryable = true)
+                    }
                     val elapsed = (clock() - start).coerceAtLeast(1L)
                     health.recordSuccess(
                         modelId = candidate,

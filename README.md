@@ -14,7 +14,7 @@
 
 **OpenPhoneUse is an ultra-fast, reliable open-source Android AI agent and voice assistant that operates your phone autonomously: it reads the screen, taps, types, scrolls and moves between apps, entirely on the phone with continuous Hindi/English speech, offline "Hey Juli" wake word, and no PC, root, ADB or Shizuku.**
 
-<a href="https://github.com/rohitjangir9887-spec/2-ai-modal-/releases/download/v0.0.11/JuliAI-OpenPhoneUse-v0.0.11.apk"><img src="https://img.shields.io/badge/Download_APK-v0.0.11-3DDC84?style=for-the-badge&logo=android&logoColor=white" alt="Download the APK" height="44"></a>
+<a href="https://github.com/rohitjangir9887-spec/2-ai-modal-/releases/download/v0.0.12/JuliAI-OpenPhoneUse-v0.0.12.apk"><img src="https://img.shields.io/badge/Download_APK-v0.0.12-3DDC84?style=for-the-badge&logo=android&logoColor=white" alt="Download the APK" height="44"></a>
 
 ![Platform](https://img.shields.io/badge/platform-Android%2011%2B-3DDC84?logo=android&logoColor=white)
 ![Kotlin](https://img.shields.io/badge/Kotlin-2.4-7F52FF?logo=kotlin&logoColor=white)
@@ -45,17 +45,18 @@ Ask in plain language, for example *"Get my phone ready for bed: turn on dark mo
 
 **Benchmark: 94.5 / 100** on 31 graded tasks in 9 categories, with a median of 42 seconds per task (GPT-6.1 Terra with fast mode, on an Android emulator, 2026-11-03, one run on a build from before this release). [See how it is graded](#benchmark).
 
-**[Download the APK (v0.0.11)](https://github.com/rohitjangir9887-spec/2-ai-modal-/releases/download/v0.0.11/JuliAI-OpenPhoneUse-v0.0.11.apk)** or read the [install steps](#install).
+**[Download the APK (v0.0.12)](https://github.com/rohitjangir9887-spec/2-ai-modal-/releases/download/v0.0.12/JuliAI-OpenPhoneUse-v0.0.12.apk)** or read the [install steps](#install).
 
-## JULI AI Voice Assistant Setup
+## JULI AI Voice Assistant & V3 Task Progress Dashboard Setup
 
-In **OpenPhoneUse v0.0.11**, a dedicated **JULI AI Voice Assistant** section is available in the app settings:
-- **Dedicated Setup Screen (`JuliVoiceSettingsPage`)**: Access hands-free configuration directly from Settings.
-- **Offline "Hey Juli" Wake Word**: Supports offline spotting for *"Hey Juli"*, *"Hi Juli"*, *"हे जूली"*, *"हाय जूली"* with sensitivity control and 2.5s echo prevention.
-- **Microphone Permissions Checklist**: Live status of `RECORD_AUDIO` permission with a 1-tap launcher to Android App Settings.
-- **Voice Persona & Tone**: Switch between natural Indian Female (`Juli Female`), Male (`Rohan Male`), and Neutral personas with Polite or Casual tone styles.
-- **Live Voice Test**: Instant preview button playing sample speech directly on-device.
-- **OpenPhoneUse V3 Automation**: Bounded native fast scrolling locally without extra API latency, NVIDIA NIM Multi-Agent routing, and duplicate send prevention.
+In **OpenPhoneUse v0.0.12**, major upgrades are integrated:
+- **Top-Level Setup in Settings**: Dedicated **JULI AI Voice Assistant** section placed right at the top of Settings with 1-tap direct Android microphone permission dialog (`ActivityResultContracts.RequestPermission()`).
+- **Drawer & Home Access**: Direct launch buttons in the Navigation Drawer and Home screen quick action chip for instant access to JULI Voice & Task Dashboard.
+- **Task Details Dashboard (`TaskDetailsDashboard.kt`)**: Real-time status cards, progress calculation, pause/resume/stop controls, product listing stats, step timeline, and live Activity Feed log view.
+- **Website State & Cross-Website Product Listing**: Intelligent webpage analysis (`WebsiteState.kt`) and automated product extraction/drafting (`ProductListingModels.kt`, `ProductDatabase`) with CSV & JSON exports.
+- **NVIDIA NIM Speech Client V3**: Upgraded Parakeet multilingual RNNT ASR (`nvidia/parakeet-1_1b-rnnt-multilingual-asr`) for Hindi/Hinglish, multipart/form-data Magpie TTS, and readiness probing.
+- **Offline "Hey Juli" Wake Word**: Offline keyword spotting for *"Hey Juli"*, *"Hi Juli"*, *"हे जूली"*, *"हाय जूली"* with sensitivity control and echo prevention.
+- **Semantic Output Validation**: Eliminates "Error: the model's reply was empty" with semantic validation before marking model turns successful.
 
 ## Demo
 

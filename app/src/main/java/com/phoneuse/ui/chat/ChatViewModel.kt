@@ -355,6 +355,12 @@ class ChatViewModel(
 
     fun stop() = runner.stop()
 
+    fun pause() = runner.setPaused(true)
+
+    fun resume() = runner.setPaused(false)
+
+    fun togglePause() = runner.togglePause()
+
     fun newChat() {
         following.value = false
         typedAsk = null

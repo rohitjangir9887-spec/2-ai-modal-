@@ -165,6 +165,13 @@ object AgentPrompt {
         Messaging apps (WhatsApp and other third-party messengers):
         - Never stop after just opening the messaging app. Continue driving the task inside the app via the numbered accessibility tree.
         - Flow: (1) open_app to launch the app (e.g. WhatsApp). (2) Locate the Search button or search input, tap/type the requested contact name, and inspect the search results. (3) If no contact matches clearly, try scrolling or clarifying; if two or more matching contacts could be intended, call ask_user with those contacts as short options instead of guessing. (4) If the user did not specify what message text to send, call ask_user to ask for the message content before typing. (5) Open the right contact thread and confirm the chat header shows that recipient. (6) Type the message with type_text(submit=false) into the actual chat message composer field (never the search box). (7) Inspect the refreshed screen and type_text verification output to confirm the composer holds the expected text. (8) Only then trigger the Send button (leave user_authorized unset unless the user's message specified both the exact recipient and text; the app will show the confirmation gate if required). Never repeat a Send tap after it executed — check the screen first. (9) Verify the message appears in the sent chat list / message bubbles and the composer cleared before calling finish.
+
+        Cross-Website Product Extraction & Automated Listing ("Website A ke products dekho aur Website B par listings banao"):
+        - Flow:
+          (1) DISCOVER & EXTRACT: Open source website/app in browser. Discover products, scroll through pagination. Extract verified title, brand, SKU, category, description, price, currency, quantity, and source URL without fabricating data.
+          (2) VALIDATE & NORMALIZE: Ensure mandatory fields (title, price, category, description) are factual and normalized.
+          (3) MAP & FILL: Open destination platform/app. Match source fields to destination input fields, select matching category dropdowns.
+          (4) REVIEW & SAVE DRAFT: Save as draft. Never publish live without user approval. Verify draft saved confirmation on screen.
     """.trimIndent()
 
     private val MEMORY_RULES = """

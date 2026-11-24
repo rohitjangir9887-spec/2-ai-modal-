@@ -65,6 +65,8 @@ fun DrawerContent(
     onDelete: (Long) -> Unit,
     onSettings: () -> Unit,
     modifier: Modifier = Modifier,
+    /** The board's "Live Task Details" tool button. */
+    onTaskDetails: (() -> Unit)? = null,
     /** The board's "루틴 n" tool button; [routinesOn] is how many are switched on. */
     onRoutines: (() -> Unit)? = null,
     routinesOn: Int = 0,
@@ -95,6 +97,46 @@ fun DrawerContent(
                 Icon(PuIcons.Plus, null, tint = c.text, modifier = Modifier.size(16.dp))
                 Spacer(Modifier.width(6.dp))
                 Text(tr("New chat", "새 대화"), fontSize = 14.sp, fontWeight = FontWeight.Medium, color = c.text)
+            }
+        }
+
+        val voiceTool = RoundedCornerShape(14.dp)
+        Row(
+            Modifier
+                .padding(start = 14.dp, end = 14.dp, top = 6.dp, bottom = 4.dp)
+                .fillMaxWidth()
+                .height(48.dp)
+                .clip(voiceTool)
+                .background(c.sunken)
+                .border(1.dp, c.line, voiceTool)
+                .clickable(role = Role.Button, onClick = onSettings)
+                .padding(horizontal = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(PuIcons.Mic, null, tint = c.accentText, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(10.dp))
+            Text(tr("JULI AI Voice Assistant", "줄리 AI 음성 비서"), Modifier.weight(1f), fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = c.text)
+            Text(tr("Hey Juli", "호출어"), fontSize = 12.sp, color = c.accentText, fontWeight = FontWeight.Medium)
+        }
+
+        if (onTaskDetails != null) {
+            val taskTool = RoundedCornerShape(14.dp)
+            Row(
+                Modifier
+                    .padding(start = 14.dp, end = 14.dp, top = 2.dp, bottom = 4.dp)
+                    .fillMaxWidth()
+                    .height(48.dp)
+                    .clip(taskTool)
+                    .background(c.sunken)
+                    .border(1.dp, c.line, taskTool)
+                    .clickable(role = Role.Button, onClick = onTaskDetails)
+                    .padding(horizontal = 14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(PuIcons.Sparkle, null, tint = c.accentText, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(10.dp))
+                Text(tr("Task Details Dashboard", "작업 상세 대시보드"), Modifier.weight(1f), fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = c.text)
+                Text(tr("Live", "실시간"), fontSize = 12.sp, color = c.accentText, fontWeight = FontWeight.Medium)
             }
         }
 

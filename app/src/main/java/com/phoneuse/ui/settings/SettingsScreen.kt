@@ -42,6 +42,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.graphics.Color
@@ -260,6 +262,42 @@ fun SettingsScreen(
         ) {
             AccountCard(settings, http, account, scope = scope, onAccountChanged = onAccountChanged, onOpenUsage = onOpenUsage, onOpenNvidia = { nvidiaOpen = true })
 
+            Section(tr("JULI AI Voice Assistant", "줄리 AI 음성 어시스턴트"))
+            Group {
+                SubRow(
+                    tr("Juli AI & “Hey Juli” setup", "줄리 AI 음성 비서 및 ‘Hey Juli’ 설정"),
+                    tr("Continuous speech, offline wake word, voice personas & permissions", "연속 음성 대화 · 오프라인 호출어 · 음성 페르소나 · 마이크 권한"),
+                    onClick = { juliVoiceOpen = true },
+                    first = true,
+                )
+                SwitchRow(
+                    tr("“Hey Juli” wake word", "‘Hey Juli’ 호출어 감지"),
+                    tr("Wake assistant hands-free with 'Hey Juli' or 'हे जूली'", "‘Hey Juli’ 또는 ‘हे जूली’ 음성으로 바로 깨워요"),
+                    juliWakeWord,
+                ) { v -> scope.launch { settings.setJuliWakeWord(v) } }
+                SwitchRow(
+                    tr("Continuous conversation", "연속 음성 대화"),
+                    tr("Automatically listens again after Juli speaks", "줄리가 답변을 마치면 자동으로 다시 경청해요"),
+                    continuousVoice,
+                ) { v -> scope.launch { settings.setNvidiaContinuousVoice(v) } }
+                ValueRow(
+                    tr("Microphone permission", "마이크 권한"),
+                    if (permissions.firstOrNull { it.key == PermissionKey.MICROPHONE }?.granted == true) tr("Allowed (Active)", "허용됨") else tr("Action Required (Tap to allow)", "권한 필요 (탭하여 허용)"),
+                    onClick = { juliVoiceOpen = true },
+                    dot = if (permissions.firstOrNull { it.key == PermissionKey.MICROPHONE }?.granted == true) c.success else c.accentText,
+                )
+                ValueRow(
+                    tr("Voice persona", "음성 비서 목소리"),
+                    label(JULI_VOICE_LABELS, juliVoicePersona),
+                    onClick = { choice = Choice.JULI_VOICE },
+                )
+                SwitchRow(
+                    tr("Read answers aloud", "답 소리 내어 읽기"),
+                    tr("Reads the answer when a task finishes", "작업이 끝나면 답을 읽어 줘요"),
+                    readAloud,
+                ) { v -> scope.launch { settings.setReadAloud(v) } }
+            }
+
             Section("AI")
             Group {
                 // An OpenAI-compatible server has no default to follow: until one is picked there is nothing to show.
@@ -344,41 +382,6 @@ fun SettingsScreen(
                 SubRow(tr("Proactive help", "알아서 챙기기"), tr("Tells you before you ask · briefing, leaving, replies, anniversaries", "물어보기 전에 먼저 알려줘요 · 브리핑, 출발, 답장, 기념일"), onClick = onOpenNudges)
                 ValueRow(tr("Daily summary", "오늘 요약 받기"), summaryLabel(summaryMinute), onClick = { choice = Choice.SUMMARY }, mono = summaryMinute >= 0)
                 ValueRow(tr("Quiet hours", "방해하지 않는 시간"), quietLabel(quiet), onClick = { choice = Choice.QUIET }, mono = quiet.on)
-            }
-
-            Section(tr("JULI AI Voice Assistant", "줄리 AI 음성 어시스턴트"))
-            Group {
-                SubRow(
-                    tr("Juli AI & “Hey Juli” setup", "줄리 AI 음성 비서 및 ‘Hey Juli’ 설정"),
-                    tr("Continuous speech, offline wake word, voice personas & permissions", "연속 음성 대화 · 오프라인 호출어 · 음성 페르소나 · 마이크 권한"),
-                    onClick = { juliVoiceOpen = true },
-                    first = true,
-                )
-                SwitchRow(
-                    tr("“Hey Juli” wake word", "‘Hey Juli’ 호출어 감지"),
-                    tr("Wake assistant hands-free with 'Hey Juli' or 'हे जूली'", "‘Hey Juli’ 또는 ‘हे जूली’ 음성으로 바로 깨워요"),
-                    juliWakeWord,
-                ) { v -> scope.launch { settings.setJuliWakeWord(v) } }
-                SwitchRow(
-                    tr("Continuous conversation", "연속 음성 대화"),
-                    tr("Automatically listens again after Juli speaks", "줄리가 답변을 마치면 자동으로 다시 경청해요"),
-                    continuousVoice,
-                ) { v -> scope.launch { settings.setNvidiaContinuousVoice(v) } }
-                ValueRow(
-                    tr("Voice persona", "음성 비서 목소리"),
-                    label(JULI_VOICE_LABELS, juliVoicePersona),
-                    onClick = { choice = Choice.JULI_VOICE },
-                )
-                ValueRow(
-                    tr("Speak by voice", "음성으로 말하기"),
-                    label(VOICE_LABELS, voice),
-                    onClick = { choice = Choice.VOICE },
-                )
-                SwitchRow(
-                    tr("Read answers aloud", "답 소리 내어 읽기"),
-                    tr("Reads the answer when a task finishes", "작업이 끝나면 답을 읽어 줘요"),
-                    readAloud,
-                ) { v -> scope.launch { settings.setReadAloud(v) } }
             }
 
             Section(tr("Display", "화면"))
@@ -1469,6 +1472,11 @@ private fun JuliVoiceSettingsPage(
     val assistantStatus = permissions.firstOrNull { it.key == PermissionKey.ASSISTANT }
     var choice by rememberSaveable { mutableStateOf<Choice?>(null) }
     var testingVoice by remember { mutableStateOf(false) }
+    val micLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted ->
+        if (!isGranted) {
+            Permissions.open(context, PermissionKey.MICROPHONE)
+        }
+    }
 
     Column(modifier.fillMaxSize().background(c.bg)) {
         Row(
@@ -1490,8 +1498,14 @@ private fun JuliVoiceSettingsPage(
             Group {
                 ValueRow(
                     tr("Microphone permission", "마이크 권한"),
-                    if (micStatus?.granted == true) tr("Allowed (Active)", "허용됨") else tr("Action Required", "권한 필요"),
-                    onClick = { Permissions.open(context, PermissionKey.MICROPHONE) },
+                    if (micStatus?.granted == true) tr("Allowed (Active)", "허용됨") else tr("Action Required (Tap to grant)", "권한 필요 (탭하여 허용)"),
+                    onClick = {
+                        if (micStatus?.granted == true) {
+                            Permissions.open(context, PermissionKey.MICROPHONE)
+                        } else {
+                            micLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
+                        }
+                    },
                     sub = tr("Record audio for continuous chat & Hey Juli", "실시간 음성 대화 및 호출어 감지에 필요"),
                     dot = if (micStatus?.granted == true) c.success else c.accentText,
                     first = true,
