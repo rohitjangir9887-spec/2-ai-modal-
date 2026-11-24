@@ -76,16 +76,8 @@ internal object ScreenToolSpecs {
         ),
         ToolSpec(
             "scroll",
-            "Scroll a scrollable element by index, or the screen center if no index is given. Optionally specify count (1-5) and until_label to execute bounded native scrolls locally until the target appears.",
-            schema(
-                required = listOf("direction"),
-                props = mapOf(
-                    "index" to index,
-                    "direction" to direction,
-                    "count" to prop("integer", "Optional number of consecutive scrolls to execute locally (1-5, default 1)."),
-                    "until_label" to prop("string", "Optional target element label to search for; scrolling stops immediately when this label is found."),
-                ),
-            ),
+            "Scroll a scrollable element by index, or the screen center if no index is given.",
+            schema(required = listOf("direction"), props = mapOf("index" to index, "direction" to direction)),
         ),
         ToolSpec(
             "swipe",
