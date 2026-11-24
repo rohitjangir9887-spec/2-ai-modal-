@@ -245,6 +245,20 @@ class LiveVoiceSession(
                 speakReply(JuliPersonality.onAnswerAcknowledged(command.cleanedPrompt))
             }
 
+            VoiceCommandType.STATUS -> {
+                val runner = agentRunnerProvider()
+                val isRunning = runner?.running?.value == true
+                val curTask = runner?.currentTask?.value.orEmpty()
+                val reply = if (isRunning && curTask.isNotBlank()) {
+                    "Abhi task chal raha hai: $curTask. Sab theek se complete ho raha hai."
+                } else if (isRunning) {
+                    "Task chal raha hai, main phone par screen automate kar rahi hoon."
+                } else {
+                    "Abhi koi task active nahi hai. Aap naya task bol sakte hain."
+                }
+                speakReply(reply)
+            }
+
             VoiceCommandType.START -> {
                 // Check if user is asking conversational question or ordering a phone task
                 val prompt = command.cleanedPrompt.ifBlank { input }
