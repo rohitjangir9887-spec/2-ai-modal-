@@ -42,6 +42,7 @@ import com.phoneuse.proactive.NudgeAction
 import com.phoneuse.proactive.NudgeLog
 import com.phoneuse.proactive.SentNudge
 import com.phoneuse.today.TodayTile
+import com.phoneuse.ui.home.AiDailySuggestions
 import com.phoneuse.ui.home.NudgeCards
 import com.phoneuse.ui.theme.MonoStyle
 import com.phoneuse.ui.theme.PuIcons
@@ -119,6 +120,13 @@ fun HomeContent(
             if (tiles.isNotEmpty()) {
                 if (wide) TodayTilesWide(tiles, tileActions) else TodayTiles(tiles, tileActions)
             }
+
+            AiDailySuggestions(
+                onSelectSuggestion = { prompt ->
+                    onQuickAction(QuickAction(prompt.take(18) + "…", prompt, { PuIcons.Bolt }))
+                },
+                timestamp = now,
+            )
 
             if (wide) {
                 Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(8.dp)) {

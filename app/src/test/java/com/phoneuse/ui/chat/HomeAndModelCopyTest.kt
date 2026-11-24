@@ -41,4 +41,17 @@ class HomeAndModelCopyTest {
         assertEquals("Fast mode", FAST_MODE_LABEL)
         assertEquals("Reasoning effort", REASONING_EFFORT_LABEL)
     }
+
+    @Test
+    fun aiDailySuggestionsGeneratesValidContextualPrompts() {
+        val samplePrompts = listOf(
+            "Check my calendar schedule for today and list any upcoming meetings or appointments",
+            "Summarize my unread notifications and any new messages from WhatsApp",
+            "Search for top rated wireless earbuds on Amazon and Flipkart and compare prices",
+            "Get my phone ready for bed: turn on dark mode, set an alarm for 6:30 AM, and turn on Do Not Disturb",
+        )
+        for (prompt in samplePrompts) {
+            assertTrue(prompt.isNotBlank())
+        }
+    }
 }

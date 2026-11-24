@@ -77,7 +77,7 @@ class JuliVoiceCommandCoordinator(
 
         private val RESUME_PATTERNS = listOf(
             "resume", "continue", "go ahead", "aage badho", "phir se shuru karo",
-            "purana task resume karo", "चालू करो", "आगे बढ़ो", "दोबारा शुरू करो", "जारी रखो"
+            "purana task resume karo", "continue karo", "chalne do", "चालू करो", "आगे बढ़ो", "दोबारा शुरू करो", "जारी रखो"
         )
 
         private val MODIFY_PATTERNS = listOf(
@@ -163,7 +163,7 @@ class JuliVoiceCommandCoordinator(
         }
 
         // 3. RESUME
-        if (RESUME_PATTERNS.any { lower == it || lower.startsWith("$it ") || lower.endsWith(" $it") }) {
+        if (RESUME_PATTERNS.any { lower == it || lower.startsWith("$it ") || lower.endsWith(" $it") || lower.contains(it) }) {
             return ClassifiedVoiceCommand(VoiceCommandType.RESUME, speechText, cleaned)
         }
 
