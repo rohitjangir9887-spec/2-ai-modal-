@@ -1393,6 +1393,21 @@ class ToolExecutor(
             "zomato" to listOf("com.application.zomato"),
             "swiggy" to listOf("in.swiggy.android"),
             "blinkit" to listOf("com.grofers.customerapp"),
+            "youtube" to listOf("com.google.android.youtube"),
+            "chrome" to listOf("com.android.chrome"),
+            "instagram" to listOf("com.instagram.android"),
+            "telegram" to listOf("org.telegram.messenger"),
+            "settings" to listOf("com.android.settings"),
+            "maps" to listOf("com.google.android.apps.maps"),
+            "gmail" to listOf("com.google.android.gm"),
+            "spotify" to listOf("com.spotify.music"),
+            "camera" to listOf("com.google.android.GoogleCamera", "com.android.camera"),
+            "photos" to listOf("com.google.android.apps.photos", "com.google.android.gallery3d"),
+            "messages" to listOf("com.google.android.apps.messaging", "com.android.mms"),
+            "phone" to listOf("com.google.android.dialer", "com.android.dialer"),
+            "clock" to listOf("com.google.android.deskclock", "com.android.deskclock"),
+            "calculator" to listOf("com.google.android.calculator", "com.android.calculator2"),
+            "files" to listOf("com.google.android.documentsui", "com.android.documentsui", "com.google.android.apps.nbu.files"),
         )
 
         /** Exposed so [AgentLoop] applies the exact same search-vs-message classification as [ToolExecutor]. */
