@@ -59,6 +59,7 @@ data class StepTimelineItem(
     val isRunning: Boolean = false,
 )
 
+@Suppress("NonObservableLocale")
 @Composable
 fun TaskDetailsDashboard(
     task: TaskCheckpoint,
@@ -79,7 +80,7 @@ fun TaskDetailsDashboard(
 
     val elapsedSec = ((task.updatedAtMs - task.createdAtMs).coerceAtLeast(0L) / 1000L)
     val elapsedStr = String.format(Locale.US, "%02d:%02d", elapsedSec / 60, elapsedSec % 60)
-    val dateStr = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date(task.createdAtMs))
+    val dateStr = SimpleDateFormat("HH:mm:ss", Locale.US).format(Date(task.createdAtMs))
 
     Column(
         modifier
@@ -278,7 +279,7 @@ fun TaskDetailsDashboard(
                                 Text(tr("No log entries.", "기록 없음."), fontSize = 12.sp, color = c.textSub)
                             } else {
                                 logs.takeLast(15).forEach { entry ->
-                                    val time = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date(entry.timestampMs))
+                                    val time = SimpleDateFormat("HH:mm:ss", Locale.US).format(Date(entry.timestampMs))
                                     Text(
                                         "[$time] ${entry.level}: ${entry.message}",
                                         fontSize = 11.5.sp,
