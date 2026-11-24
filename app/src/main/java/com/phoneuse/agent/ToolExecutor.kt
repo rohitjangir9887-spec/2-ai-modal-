@@ -442,7 +442,43 @@ class ToolExecutor(
                     val seen = need(screenOrNull)
                     element(liveIndex(asked, seen, now), now)
                 }
-                if (!device.scroll(node, direction)) throw StepFail("$tool failed")
+                val count = (args.int("count") ?: 1).coerceIn(1, 5)
+                val untilLabel = args.str("until_label")?.trim()
+
+                if (!untilLabel.isNullOrBlank() && findLabel(untilLabel, now) != null) {
+                    return "target '$untilLabel' already visible"
+                }
+
+                var performed = 0
+                var currentScreen = now
+                for (i in 0 until count) {
+                    if (gate.wasInterrupted()) break
+                    val targetNode = if (i == 0) node else {
+                        args.int("index")?.let { asked ->
+                            element(liveIndex(asked, need(screenOrNull), currentScreen), currentScreen)
+                        }
+                    }
+                    val ok = device.scroll(targetNode, direction)
+                    if (!ok) {
+                        if (performed == 0) throw StepFail("$tool failed")
+                        break
+                    }
+                    performed++
+                    if (count > 1 || !untilLabel.isNullOrBlank()) {
+                        val nextScreen = requireVisible(readNow())
+                        val prevText = currentScreen.text
+                        currentScreen = nextScreen
+                        actedOn = nextScreen
+
+                        if (!untilLabel.isNullOrBlank() && findLabel(untilLabel, nextScreen) != null) {
+                            break
+                        }
+                        if (nextScreen.text == prevText && i > 0) {
+                            break
+                        }
+                    }
+                }
+                if (performed == 0) throw StepFail("$tool failed")
             }
             "swipe" -> {
                 need(screenOrNull)

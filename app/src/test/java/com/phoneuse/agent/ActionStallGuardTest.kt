@@ -26,4 +26,12 @@ class ActionStallGuardTest {
         assertEquals(ActionStallGuard.Decision.REPLAN, g.check("type_text", args, 10))
         assertEquals(ActionStallGuard.Decision.STOP, g.check("type_text", args, 10))
     }
+
+    @Test fun sendSmsNeverRetriesBlindly() {
+        val g = ActionStallGuard()
+        val args = "{\"to\":\"1234567890\",\"body\":\"Hello\"}"
+        assertEquals(ActionStallGuard.Decision.ALLOW, g.check("send_sms", args, 10))
+        assertEquals(ActionStallGuard.Decision.REPLAN, g.check("send_sms", args, 10))
+        assertEquals(ActionStallGuard.Decision.STOP, g.check("send_sms", args, 10))
+    }
 }

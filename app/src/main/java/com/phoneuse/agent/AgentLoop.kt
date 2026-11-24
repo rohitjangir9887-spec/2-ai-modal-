@@ -790,6 +790,11 @@ class AgentLoop(
                     ?.text?.trim().orEmpty()
                 "tap_send:${screen.packageName.orEmpty()}:${label?.trim().orEmpty()}:$draft"
             }
+            "send_sms" -> {
+                val to = args.str("to")?.trim().orEmpty()
+                val body = args.str("body")?.trim().orEmpty()
+                "send_sms:$to:$body"
+            }
             else -> null
         }
     }

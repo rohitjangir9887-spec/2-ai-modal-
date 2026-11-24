@@ -25,8 +25,9 @@ internal class ActionStallGuard {
 
         // A submitted text message must not be entered twice just because the UI did not
         // update. Uncertain sends need a fresh observation and user-visible recovery.
-        val potentiallySent = action == "type_text" &&
-            Regex("\\\"submit\\\"\\s*:\\s*true").containsMatchIn(arguments)
+        val potentiallySent = (action == "type_text" &&
+            Regex("\\\"submit\\\"\\s*:\\s*true").containsMatchIn(arguments)) ||
+            action == "send_sms"
         val threshold = if (potentiallySent) 2 else 3
         return when {
             repeats >= threshold + 1 -> Decision.STOP
@@ -59,7 +60,7 @@ internal class ActionStallGuard {
         const val MAX_SENT_RECORDS = 32
         val WATCHED_ACTIONS = setOf(
             "tap", "long_press", "type_text", "scroll", "swipe", "open_app",
-            "open_uri", "wait", "get_screen", "batch",
+            "open_uri", "wait", "get_screen", "batch", "send_sms",
         )
     }
 }

@@ -18,6 +18,7 @@ import android.view.WindowInsets
 import android.view.WindowManager
 import android.view.accessibility.AccessibilityNodeInfo
 import android.view.accessibility.AccessibilityNodeInfo.AccessibilityAction
+import android.view.accessibility.AccessibilityWindowInfo
 import com.phoneuse.agent.QuickSettle
 import com.phoneuse.agent.AppInfo
 import com.phoneuse.agent.DeviceController
@@ -495,24 +496,8 @@ class AccessibilityDeviceController(
         if (direction !in DIRECTIONS) return false
         if (node != null) {
             val live = AccessibilityTreeReader(s).resolve(node)
-            if (live != null) {
-                val directional = when (direction) {
-                    "up" -> AccessibilityAction.ACTION_SCROLL_UP
-                    "down" -> AccessibilityAction.ACTION_SCROLL_DOWN
-                    "left" -> AccessibilityAction.ACTION_SCROLL_LEFT
-                    else -> AccessibilityAction.ACTION_SCROLL_RIGHT
-                }
-                val done = if (live.actionList.contains(directional)) {
-                    live.performAction(directional.id)
-                } else {
-                    val generic = if (direction == "down" || direction == "right") {
-                        AccessibilityNodeInfo.ACTION_SCROLL_FORWARD
-                    } else {
-                        AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD
-                    }
-                    live.performAction(generic)
-                }
-                if (done) return true
+            if (live != null && performScrollOnNode(live, direction)) {
+                return true
             }
             val b = node.bounds
             val d = displayBounds(s)
@@ -523,8 +508,56 @@ class AccessibilityDeviceController(
             if (r <= l || bt <= t) return false
             return swipeInside(l, t, r, bt, direction)
         }
+        // Accessibility-first for screen scroll: find active scrollable container before gesture fallback
+        val activeScrollable = findActiveScrollableNode(s)
+        if (activeScrollable != null && performScrollOnNode(activeScrollable, direction)) {
+            return true
+        }
         val m = displayBounds(s)
         return swipeInside(0, 0, m.width(), m.height(), direction)
+    }
+
+    private fun performScrollOnNode(live: AccessibilityNodeInfo, direction: String): Boolean {
+        val directional = when (direction) {
+            "up" -> AccessibilityAction.ACTION_SCROLL_UP
+            "down" -> AccessibilityAction.ACTION_SCROLL_DOWN
+            "left" -> AccessibilityAction.ACTION_SCROLL_LEFT
+            else -> AccessibilityAction.ACTION_SCROLL_RIGHT
+        }
+        return if (live.actionList.contains(directional)) {
+            live.performAction(directional.id)
+        } else {
+            val generic = if (direction == "down" || direction == "right") {
+                AccessibilityNodeInfo.ACTION_SCROLL_FORWARD
+            } else {
+                AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD
+            }
+            live.performAction(generic)
+        }
+    }
+
+    private fun findActiveScrollableNode(s: PhoneUseAccessibilityService): AccessibilityNodeInfo? {
+        val windows = s.windows
+        val targetWindow = windows.firstOrNull { it.type == AccessibilityWindowInfo.TYPE_APPLICATION && it.isActive }
+            ?: windows.firstOrNull { it.type == AccessibilityWindowInfo.TYPE_APPLICATION }
+            ?: windows.firstOrNull { it.isActive }
+            ?: return null
+        val root = targetWindow.root ?: return null
+        val queue = ArrayDeque<AccessibilityNodeInfo>()
+        queue.add(root)
+        while (queue.isNotEmpty()) {
+            val current = queue.removeFirst()
+            if (current.isScrollable && current.isVisibleToUser) {
+                return current
+            }
+            for (i in 0 until current.childCount) {
+                val child = current.getChild(i)
+                if (child != null) {
+                    queue.add(child)
+                }
+            }
+        }
+        return null
     }
 
     /** "down" reveals content further down, so the finger moves up. Uses the middle 60% of the box. */

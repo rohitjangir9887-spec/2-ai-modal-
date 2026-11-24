@@ -116,7 +116,7 @@ class ModelRouter(
         if (isCoding && hasCodeIntent(lower)) {
             return AgentRole.CODING to "coding-or-technical"
         }
-        if (hasToolFailures && stepIndex >= 2) {
+        if (hasToolFailures && stepIndex >= 1) {
             return AgentRole.MANAGER to "recovery-replan"
         }
         if (tools.isEmpty() || (!hasPhoneTools && isSimpleFastPrompt(lower))) {
@@ -216,7 +216,9 @@ class ModelRouter(
                 (item.output.contains("\"ok\":false") ||
                     item.output.contains("ERROR:", ignoreCase = true) ||
                     item.output.contains("failed", ignoreCase = true) ||
-                    item.output.contains("stale", ignoreCase = true))
+                    item.output.contains("stale", ignoreCase = true) ||
+                    item.output.contains("repeated", ignoreCase = true) ||
+                    item.output.contains("replan", ignoreCase = true))
         }
 
     private fun isComplexPlan(lower: String): Boolean =
