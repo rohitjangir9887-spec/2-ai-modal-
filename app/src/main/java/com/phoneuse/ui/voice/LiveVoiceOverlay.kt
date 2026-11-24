@@ -39,6 +39,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -82,11 +83,16 @@ fun LiveVoiceOverlay(
     val isMuted by session.isMuted.collectAsState()
     val errorMsg by session.errorMessage.collectAsState()
 
-    DisposableEffect(conversationId) {
+    // Conversation IDs change when the first voice message creates a new chat.
+    // Keep the active speech session and completion collector alive across that update.
+    DisposableEffect(session) {
         session.startSession(context, conversationId)
         onDispose {
             session.stopSession()
         }
+    }
+    LaunchedEffect(conversationId) {
+        session.updateConversationId(conversationId)
     }
 
     val c = pu

@@ -5,6 +5,7 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import com.phoneuse.app.AgentRunner
+import com.phoneuse.app.AppGraph
 import com.phoneuse.app.Source
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -15,6 +16,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.util.concurrent.atomic.AtomicBoolean
@@ -34,7 +36,7 @@ import java.util.concurrent.atomic.AtomicBoolean
  */
 class LiveVoiceSession(
     private val coordinatorProvider: () -> JuliVoiceCommandCoordinator? = { null },
-    private val agentRunnerProvider: () -> AgentRunner? = { null },
+    private val agentRunnerProvider: () -> AgentRunner? = { runCatching { AppGraph.runner }.getOrNull() },
 ) {
     companion object {
         private const val TAG = "LiveVoiceSession"
@@ -72,11 +74,22 @@ class LiveVoiceSession(
     private var recognizer: VoiceRecognizer? = null
     private var speakingPulseJob: Job? = null
     private val isLiveActive = AtomicBoolean(false)
+    private var replyJob: Job? = null
+    private var waitingForAgentReply = false
+    private var expectedConversationId: Long? = null
+    private var speechGeneration = 0L
+
+    fun isSessionActive(): Boolean = isLiveActive.get()
+
+    /** Keep the voice session alive when Compose navigates from new-chat to a saved conversation. */
+    fun updateConversationId(conversationId: Long?) {
+        if (conversationId != null) _activeConversationId.value = conversationId
+    }
 
     init {
         // Wire callbacks to VoiceSessionManager.shared
         VoiceSessionManager.shared.attachCallbacks(
-            onStopSpeech = { interruptSpeech() },
+            onStopSpeech = { stopSpeechOnly() },
             onStartListening = { triggerListening() },
         )
     }
@@ -89,13 +102,36 @@ class LiveVoiceSession(
         isLiveActive.set(true)
         VoiceSessionManager.shared.setContinuousMode(true)
 
+        replyJob?.cancel()
+        agentRunnerProvider()?.let { runner ->
+            replyJob = scope.launch {
+                runner.completedReplies.collect { event ->
+                    if (!isLiveActive.get() || !waitingForAgentReply) return@collect
+                    val expected = expectedConversationId
+                    if (expected != null && event.conversationId != expected) return@collect
+                    waitingForAgentReply = false
+                    expectedConversationId = null
+                    if (event.cancelled) {
+                        speakReply("काम रोक दिया गया है।")
+                    } else {
+                        speakReply(event.text?.takeIf(String::isNotBlank)
+                            ?: "इस बार AI का जवाब नहीं मिल पाया। कृपया दोबारा कोशिश करें।")
+                    }
+                }
+            }
+        }
         initRecognizer(context)
         triggerListening()
-        Log.i(TAG, "Live duplex voice session started (conversationId=$conversationId)")
+        Log.i(TAG, "Live voice session started (conversationId=$conversationId)")
     }
 
     fun stopSession() {
         isLiveActive.set(false)
+        speechGeneration++
+        waitingForAgentReply = false
+        expectedConversationId = null
+        replyJob?.cancel()
+        replyJob = null
         stopSpeakingPulse()
         recognizer?.destroy()
         recognizer = null
@@ -124,14 +160,17 @@ class LiveVoiceSession(
      * Instant Barge-in: stops any active speech playback immediately
      * and re-arms listening for the user's interruption.
      */
-    fun interruptSpeech() {
+    private fun stopSpeechOnly() {
+        speechGeneration++
         stopSpeakingPulse()
         KokoroVoiceEngine.stop()
-        VoiceSessionManager.shared.bargeIn()
-        _phase.value = LiveVoicePhase.LISTENING
         _audioAmplitude.value = 0.0f
-        triggerListening()
-        Log.d(TAG, "Barge-in triggered: speech stopped, listening resumed")
+    }
+
+    fun interruptSpeech() {
+        // The manager already calls stopSpeechOnly() then triggerListening(); do not recursively call bargeIn().
+        VoiceSessionManager.shared.bargeIn()
+        Log.d(TAG, "Barge-in requested")
     }
 
     private fun initRecognizer(context: Context) {
@@ -152,6 +191,7 @@ class LiveVoiceSession(
 
     private fun triggerListening() {
         if (!isLiveActive.get() || _isMuted.value) return
+        if (recognizer?.state?.value?.listening == true) return
         stopSpeakingPulse()
         _phase.value = LiveVoicePhase.LISTENING
         _partialTranscript.value = ""
@@ -177,6 +217,7 @@ class LiveVoiceSession(
     }
 
     private fun onSpeechFinal(text: String) {
+        if (!isLiveActive.get() || _isMuted.value) return
         val cleaned = text.trim()
         if (cleaned.isBlank()) {
             // Re-arm listening if no speech was heard
@@ -213,13 +254,13 @@ class LiveVoiceSession(
             }
 
             VoiceCommandType.PAUSE -> {
-                agentRunnerProvider()?.taskQueue?.setPaused(true)
-                speakReply(JuliPersonality.onTaskPaused())
+                val paused = agentRunnerProvider()?.setPaused(true) == true
+                speakReply(if (paused) JuliPersonality.onTaskPaused() else "अभी कोई चालू टास्क नहीं है।")
             }
 
             VoiceCommandType.RESUME -> {
-                agentRunnerProvider()?.taskQueue?.setPaused(false)
-                speakReply(JuliPersonality.onTaskResumed())
+                val resumed = agentRunnerProvider()?.setPaused(false) == true
+                speakReply(if (resumed) JuliPersonality.onTaskResumed() else "अभी कोई रुका हुआ टास्क नहीं है।")
             }
 
             VoiceCommandType.MODIFY -> {
@@ -250,7 +291,7 @@ class LiveVoiceSession(
                 val isRunning = runner?.running?.value == true
                 val curTask = runner?.currentTask?.value.orEmpty()
                 val reply = if (isRunning && curTask.isNotBlank()) {
-                    "Abhi task chal raha hai: $curTask. Sab theek se complete ho raha hai."
+                    "अभी यह टास्क चल रहा है: $curTask. परिणाम की जाँच पूरी नहीं हुई है।"
                 } else if (isRunning) {
                     "Task chal raha hai, main phone par screen automate kar rahi hoon."
                 } else {
@@ -264,16 +305,10 @@ class LiveVoiceSession(
                 val prompt = command.cleanedPrompt.ifBlank { input }
                 val isPhoneTask = command.targetApp != null || isAutomationRequest(prompt)
 
-                if (isPhoneTask) {
-                    _phase.value = LiveVoicePhase.ACTING
-                    val ack = JuliPersonality.onTaskStarted(prompt, command.targetApp)
-                    speakReply(ack) {
-                        dispatchToRunner(prompt)
-                    }
-                } else {
-                    // Conversational AI reasoning
-                    dispatchToRunner(prompt)
-                }
+                _phase.value = if (isPhoneTask) LiveVoicePhase.ACTING else LiveVoicePhase.THINKING
+                // The real model answer will be spoken from AgentRunner.completedReplies.
+                // Do not substitute a canned "starting" sentence for an actual AI response.
+                dispatchToRunner(prompt)
             }
         }
     }
@@ -289,12 +324,30 @@ class LiveVoiceSession(
     }
 
     private fun dispatchToRunner(text: String) {
-        val runner = agentRunnerProvider() ?: return
+        val runner = agentRunnerProvider()
+        if (runner == null) {
+            _errorMessage.value = "AI engine is not initialized"
+            speakReply("AI इंजन तैयार नहीं है। ऐप दोबारा खोलकर कोशिश करें।")
+            return
+        }
         val convId = _activeConversationId.value
-        runner.send(convId, text, Source.ASSIST)
+        // Mark the turn pending before launching its job to avoid losing a fast reply.
+        waitingForAgentReply = true
+        expectedConversationId = convId
+        // Live Voice is a user-originated chat request, not an unsolicited side-assistant screen capture.
+        if (!runner.send(convId, text, Source.APP)) {
+            waitingForAgentReply = false
+            expectedConversationId = null
+            speakReply("अभी दूसरा टास्क चल रहा है। उसका काम पूरा होने पर फिर कोशिश करें।")
+            return
+        }
     }
 
     fun speakReply(text: String, onAfterSpoken: (() -> Unit)? = null) {
+        if (!isLiveActive.get()) return
+        speechGeneration++
+        val generation = speechGeneration
+        recognizer?.cancel()
         _lastAssistantReply.value = text
         _phase.value = LiveVoicePhase.SPEAKING
         VoiceSessionManager.shared.onReplySpeaking(willSpeak = true)
@@ -302,7 +355,7 @@ class LiveVoiceSession(
 
         val ctx = activeContext
         if (ctx == null) {
-            onPlaybackDone(onAfterSpoken)
+            onPlaybackDone(generation, onAfterSpoken)
             return
         }
 
@@ -312,22 +365,19 @@ class LiveVoiceSession(
             languageTag = "hi-IN",
             onDone = {
                 mainHandler.post {
-                    onPlaybackDone(onAfterSpoken)
+                    onPlaybackDone(generation, onAfterSpoken)
                 }
             },
         )
     }
 
-    private fun onPlaybackDone(onAfterSpoken: (() -> Unit)?) {
+    private fun onPlaybackDone(generation: Long, onAfterSpoken: (() -> Unit)?) {
+        if (!isLiveActive.get() || generation != speechGeneration) return
         stopSpeakingPulse()
+        // The shared manager invokes triggerListening() once, if continuous mode is on.
         VoiceSessionManager.shared.onSpeechCompleted()
         onAfterSpoken?.invoke()
-
-        // Continuous turn-taking: automatically resume listening after speaking ends
-        if (isLiveActive.get() && !_isMuted.value) {
-            _phase.value = LiveVoicePhase.LISTENING
-            triggerListening()
-        } else {
+        if (!VoiceSessionManager.shared.state.value.continuousMode || _isMuted.value) {
             _phase.value = LiveVoicePhase.IDLE
         }
     }
