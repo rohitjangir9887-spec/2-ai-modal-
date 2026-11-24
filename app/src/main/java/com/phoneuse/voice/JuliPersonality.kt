@@ -107,6 +107,14 @@ object JuliPersonality {
         }
     }
 
+    fun onTaskModified(newPrompt: String): String {
+        return when (dialect) {
+            Dialect.HINDI -> "जी, टास्क में बदलाव कर दिया गया है।"
+            Dialect.HINGLISH -> "Task modify kar diya hai."
+            Dialect.INDIAN_ENGLISH -> "Modified your task parameters."
+        }
+    }
+
     fun onTaskReplaced(newPrompt: String): String {
         return when (dialect) {
             Dialect.HINDI -> "पुराना काम रोक कर, नया काम शुरू कर रही हूँ।"

@@ -79,6 +79,11 @@ class JuliVoiceCommandCoordinator(
             "purana task resume karo", "चालू करो", "आगे बढ़ो", "दोबारा शुरू करो", "जारी रखो"
         )
 
+        private val MODIFY_PATTERNS = listOf(
+            "modify", "change", "badlo", "thoda change karo", "sudhaar karo",
+            "बदलो", "सुधार करो", "परिवर्तन करो"
+        )
+
         private val REPLACE_PATTERNS = listOf(
             "replace", "do this instead", "pehle doosra task karo", "ye chhod kar",
             "is task ko badlo", "इसकी जगह", "पहले दूसरा काम करो", "ये छोड़ो"
@@ -156,7 +161,12 @@ class JuliVoiceCommandCoordinator(
             return ClassifiedVoiceCommand(VoiceCommandType.RESUME, speechText, cleaned)
         }
 
-        // 4. REPLACE
+        // 4. MODIFY
+        if (MODIFY_PATTERNS.any { lower.contains(it) }) {
+            return ClassifiedVoiceCommand(VoiceCommandType.MODIFY, speechText, cleaned)
+        }
+
+        // 5. REPLACE
         if (REPLACE_PATTERNS.any { lower.contains(it) }) {
             return ClassifiedVoiceCommand(VoiceCommandType.REPLACE, speechText, cleaned)
         }
@@ -221,6 +231,14 @@ class JuliVoiceCommandCoordinator(
                 agentRunner?.taskQueue?.setPaused(false)
                 val reply = personality.onTaskResumed()
                 speakResponse(reply, onFeedbackSpoken)
+            }
+
+            VoiceCommandType.MODIFY -> {
+                val reply = personality.onTaskModified(command.cleanedPrompt)
+                speakResponse(reply, onFeedbackSpoken)
+                if (command.cleanedPrompt.isNotBlank() && conversationId != null) {
+                    agentRunner?.send(conversationId, command.cleanedPrompt, Source.ASSIST)
+                }
             }
 
             VoiceCommandType.REPLACE -> {

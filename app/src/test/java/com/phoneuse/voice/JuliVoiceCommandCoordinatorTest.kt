@@ -38,6 +38,8 @@ class JuliVoiceCommandCoordinatorTest {
 
     @Test
     fun classifyDetectsReplaceAndQueueCommands() {
+        assertEquals(VoiceCommandType.MODIFY, coordinator.classify("Juli, thoda change karo").type)
+        assertEquals(VoiceCommandType.MODIFY, coordinator.classify("बदलो इसे").type)
         assertEquals(VoiceCommandType.REPLACE, coordinator.classify("Juli, pehle doosra task karo").type)
         assertEquals(VoiceCommandType.REPLACE, coordinator.classify("इसकी जगह वो करो").type)
         assertEquals(VoiceCommandType.QUEUE, coordinator.classify("Juli, baad mein karna ye").type)
