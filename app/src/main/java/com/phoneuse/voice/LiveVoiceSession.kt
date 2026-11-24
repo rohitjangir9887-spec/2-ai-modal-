@@ -397,6 +397,14 @@ class LiveVoiceSession(
                 }
             }
 
+            // Retain active conversation id for multi-turn voice continuity
+            runner.activeConversation.value?.let { activeId ->
+                if (_activeConversationId.value == null) {
+                    _activeConversationId.value = activeId
+                    Log.i(TAG, "Adopted conversationId=$activeId for subsequent voice turns")
+                }
+            }
+
             Log.i(TAG, "Speaking assistant response: ${finalText.take(80)}...")
             speakReply(finalText)
         }

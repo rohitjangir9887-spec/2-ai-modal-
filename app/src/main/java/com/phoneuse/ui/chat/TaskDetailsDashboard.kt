@@ -69,6 +69,7 @@ fun TaskDetailsDashboard(
     onResume: () -> Unit,
     onStop: () -> Unit,
     onBack: () -> Unit,
+    onRetry: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     val c = pu
@@ -144,7 +145,7 @@ fun TaskDetailsDashboard(
 
                     // Progress Bar
                     val progressFraction = when {
-                        task.status == TaskRunStatus.COMPLETED -> 1.0f
+                        task.status == TaskRunStatus.COMPLETED || task.status == TaskRunStatus.SUCCEEDED -> 1.0f
                         task.status.isTerminal -> 0.0f
                         task.stepCount > 0 -> (task.stepCount.toFloat() / (task.stepCount + 3).toFloat()).coerceIn(0.1f, 0.95f)
                         else -> 0.05f
@@ -184,6 +185,9 @@ fun TaskDetailsDashboard(
                         }
                         if (!task.status.isTerminal) {
                             ControlButton(tr("Stop", "중지"), PuIcons.Close, c.danger, Modifier.weight(1f), onClick = onStop)
+                        }
+                        if (task.status.isTerminal && onRetry != null && (task.status == TaskRunStatus.FAILED || task.status == TaskRunStatus.INTERRUPTED || task.status == TaskRunStatus.CANCELLED)) {
+                            ControlButton(tr("Retry Task", "작업 다시 시도"), PuIcons.Check, c.accentText, Modifier.weight(1f), onClick = onRetry)
                         }
                     }
                 }
@@ -305,11 +309,13 @@ private fun StatusBadge(status: TaskRunStatus) {
     val (color, text) = when (status) {
         TaskRunStatus.RUNNING -> c.accentText to "RUNNING"
         TaskRunStatus.PAUSED -> c.accent to "PAUSED"
-        TaskRunStatus.WAITING_CONFIRM -> c.accent to "WAITING"
-        TaskRunStatus.COMPLETED -> c.success to "COMPLETED"
+        TaskRunStatus.WAITING_CONFIRM, TaskRunStatus.WAITING_FOR_USER -> c.accent to "WAITING"
+        TaskRunStatus.RETRYING -> c.accent to "RETRYING"
+        TaskRunStatus.BLOCKED -> c.danger to "BLOCKED"
+        TaskRunStatus.COMPLETED, TaskRunStatus.SUCCEEDED -> c.success to "SUCCEEDED"
         TaskRunStatus.FAILED -> c.danger to "FAILED"
         TaskRunStatus.CANCELLED, TaskRunStatus.INTERRUPTED -> c.textSub to status.name
-        TaskRunStatus.QUEUED -> c.textSub to "QUEUED"
+        TaskRunStatus.QUEUED, TaskRunStatus.PENDING -> c.textSub to "QUEUED"
     }
     Text(
         text,

@@ -12,17 +12,22 @@ import kotlinx.coroutines.flow.update
 import java.util.concurrent.ConcurrentHashMap
 
 enum class TaskRunStatus {
+    PENDING,
     QUEUED,
     RUNNING,
-    PAUSED,
+    WAITING_FOR_USER,
     WAITING_CONFIRM,
-    INTERRUPTED,
+    PAUSED,
+    RETRYING,
+    BLOCKED,
+    SUCCEEDED,
     COMPLETED,
+    INTERRUPTED,
     FAILED,
     CANCELLED;
 
     val isTerminal: Boolean
-        get() = this == COMPLETED || this == FAILED || this == CANCELLED || this == INTERRUPTED
+        get() = this == COMPLETED || this == SUCCEEDED || this == FAILED || this == CANCELLED || this == INTERRUPTED
 }
 
 data class TaskCheckpoint(
@@ -149,12 +154,15 @@ class SqliteTaskCheckpointBackend(context: Context) : SQLiteOpenHelper(context.a
         writableDatabase.update(
             "task_checkpoints",
             cv,
-            "status IN (?, ?, ?, ?)",
+            "status IN (?, ?, ?, ?, ?, ?, ?)",
             arrayOf(
                 TaskRunStatus.QUEUED.name,
+                TaskRunStatus.PENDING.name,
                 TaskRunStatus.RUNNING.name,
+                TaskRunStatus.RETRYING.name,
                 TaskRunStatus.PAUSED.name,
                 TaskRunStatus.WAITING_CONFIRM.name,
+                TaskRunStatus.WAITING_FOR_USER.name,
             ),
         )
     } catch (e: Exception) {

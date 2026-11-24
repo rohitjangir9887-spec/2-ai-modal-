@@ -742,6 +742,13 @@ private fun AppRoot(
                     onResume = { vm.resume() },
                     onStop = { vm.stop() },
                     onBack = { screen = Screen.CHAT },
+                    onRetry = {
+                        val prompt = currentTask.prompt
+                        if (prompt.isNotBlank()) {
+                            screen = Screen.CHAT
+                            vm.send(prompt)
+                        }
+                    },
                     modifier = Modifier.widthIn(max = 640.dp),
                 )
             }

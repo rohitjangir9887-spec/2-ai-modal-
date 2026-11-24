@@ -14,7 +14,7 @@
 
 **OpenPhoneUse is an ultra-fast, reliable open-source Android AI agent and voice assistant that operates your phone autonomously: it reads the screen, taps, types, scrolls and moves between apps, entirely on the phone with continuous Hindi/English speech, offline "Hey Juli" wake word, and no PC, root, ADB or Shizuku.**
 
-<a href="https://github.com/rohitjangir9887-spec/2-ai-modal-/releases/download/v0.0.14/JuliAI-OpenPhoneUse-v0.0.14.apk"><img src="https://img.shields.io/badge/Download_APK-v0.0.14-3DDC84?style=for-the-badge&logo=android&logoColor=white" alt="Download the APK" height="44"></a>
+<a href="https://github.com/rohitjangir9887-spec/2-ai-modal-/releases/download/v0.0.15/JuliAI-OpenPhoneUse-v0.0.15.apk"><img src="https://img.shields.io/badge/Download_APK-v0.0.15-3DDC84?style=for-the-badge&logo=android&logoColor=white" alt="Download the APK" height="44"></a>
 
 ![Platform](https://img.shields.io/badge/platform-Android%2011%2B-3DDC84?logo=android&logoColor=white)
 ![Kotlin](https://img.shields.io/badge/Kotlin-2.4-7F52FF?logo=kotlin&logoColor=white)
@@ -45,11 +45,11 @@ Ask in plain language, for example *"Get my phone ready for bed: turn on dark mo
 
 **Benchmark: 94.5 / 100** on 31 graded tasks in 9 categories, with a median of 42 seconds per task (GPT-6.1 Terra with fast mode, on an Android emulator, 2026-11-03, one run on a build from before this release). [See how it is graded](#benchmark).
 
-**[Download the APK (v0.0.14)](https://github.com/rohitjangir9887-spec/2-ai-modal-/releases/download/v0.0.14/JuliAI-OpenPhoneUse-v0.0.14.apk)** or read the [install steps](#install).
+**[Download the APK (v0.0.15)](https://github.com/rohitjangir9887-spec/2-ai-modal-/releases/download/v0.0.15/JuliAI-OpenPhoneUse-v0.0.15.apk)** or read the [install steps](#install).
 
 ## JULI AI Realtime Live Voice & Assistant V3 Setup
 
-In **OpenPhoneUse v0.0.14**, comprehensive realtime voice upgrades and zero-hang pipeline are implemented:
+In **OpenPhoneUse v0.0.15**, comprehensive realtime voice upgrades and zero-hang pipeline are implemented:
 - **ChatGPT-Style Live Voice Mode (`LiveVoiceOverlay.kt`, `LiveVoiceSession.kt`)**: Dedicated lightning bolt entry button in chat composer opening a full-screen interactive voice overlay with audio-reactive glowing Voice Orb, live partial speech streaming, and automatic turn-taking without tapping Send.
 - **Fixed Silent Kokoro Audio Bug (`KokoroVoiceEngine.kt`)**: Removed silent zero-filled PCM buffers; implemented real harmonic acoustic waveform generation with RMS energy verification and reliable Indian female TTS fallback (`hi-IN`).
 - **Real On-Device AudioRecord Wake Word (`JuliWakeWordDetector.kt`)**: Full background 16kHz mono audio capture pipeline with Voice Activity Detection (VAD), phonetic keyword spotting for *"Hey Juli"*, *"Hi Juli"*, *"हे जूली"*, echo suppression while Juli speaks, and 2.5s cooldown.

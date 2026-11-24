@@ -6,6 +6,13 @@ All notable changes to OpenPhoneUse are listed here, newest first. The format fo
 
 - In a batch, the step right after a two-finger rotation or swipe checks screen capture again even when the screen looks unchanged, and a two-finger gesture makes one capture check before it starts instead of two.
 
+## [0.0.15] - 2026-11-24
+
+- **Phase 10 Complete Live Task Dashboard**: Supported all canonical task lifecycle states (`PENDING`, `QUEUED`, `RUNNING`, `WAITING_FOR_USER`, `WAITING_CONFIRM`, `PAUSED`, `RETRYING`, `BLOCKED`, `SUCCEEDED`, `COMPLETED`, `INTERRUPTED`, `FAILED`, `CANCELLED`) across `TaskRunStatus`, `TaskCheckpointStore`, and SQLite persistence.
+- **One-Tap Task Retry**: Added direct 1-tap "Retry Task" button in `TaskDetailsDashboard` allowing instant restart of failed or interrupted automation jobs.
+- **Multi-Turn Duplex Context Retention**: In `LiveVoiceSession`, dynamically adopted newly spawned conversation IDs so follow-up voice queries retain conversational memory seamlessly.
+- **Barge-In Reentrancy Hardening**: Protected `VoiceSessionManager` with atomic reentrancy locks to prevent any recursion under rapid interruptions.
+
 ## [0.0.14] - 2026-11-24
 
 - **Fixed JULI AI "Thinking..." Pipeline**: Resolved the critical hang where Live Voice stayed stuck in Thinking mode. Wired `LiveVoiceSession` directly to `AgentRunner.streamingText` and run lifecycle events, with real-time streaming text preview, conversational TTS playback, chat repository message fallback, and a 45s safety timeout.
