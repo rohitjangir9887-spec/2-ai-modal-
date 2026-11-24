@@ -1574,6 +1574,7 @@ private fun JuliVoiceSettingsPage(
                 ValueRow(
                     tr("Active speech synthesis (TTS)", "활성 음성 합성 (TTS)"),
                     if (magpieUrl.isNotBlank()) "NVIDIA Magpie" else "Android Indian TTS",
+                    onClick = {},
                     sub = tr("Fallback: 1. NVIDIA Magpie -> 2. Local Neural -> 3. Android System", "대체 순서: Magpie -> Local Neural -> Android TTS"),
                     dot = if (magpieUrl.isNotBlank()) c.accentText else c.success,
                     first = true,
@@ -1581,12 +1582,14 @@ private fun JuliVoiceSettingsPage(
                 ValueRow(
                     tr("Active speech recognizer (ASR)", "활성 음성 인식 (ASR)"),
                     if (parakeetUrl.isNotBlank()) "NVIDIA Parakeet" else "Android On-Device ASR",
+                    onClick = {},
                     sub = tr("Fallback: 1. NVIDIA Parakeet -> 2. On-Device STT -> 3. System", "대체 순서: Parakeet -> On-Device STT -> Android Service"),
                     dot = if (parakeetUrl.isNotBlank()) c.accentText else c.success,
                 )
                 ValueRow(
                     tr("Wake-word engine", "호출어 감지 엔진"),
                     if (juliWakeWord) "AudioRecord 16kHz + VAD" else "Disabled",
+                    onClick = {},
                     sub = tr("Offline keyword spotting with echo suppression", "자체 음성 에코 방지 및 16kHz VAD 감지"),
                     dot = if (juliWakeWord) c.success else c.textSub,
                 )

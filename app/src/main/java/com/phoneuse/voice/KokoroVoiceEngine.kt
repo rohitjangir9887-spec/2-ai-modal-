@@ -213,6 +213,8 @@ object KokoroVoiceEngine {
             }
         }
     }
+
+    private suspend fun playWithKokoro(
         context: Context,
         text: String,
         languageTag: String,

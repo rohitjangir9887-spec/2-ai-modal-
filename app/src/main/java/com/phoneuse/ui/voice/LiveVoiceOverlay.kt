@@ -105,7 +105,7 @@ fun LiveVoiceOverlay(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(horizontal = 20.dp, vertical = 16.dp),
-            horizontalAlignment = Alignment.CenterVertically,
+            horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.SpaceBetween,
         ) {
             // Top Bar: Branding, Live Status Chip, Close Button
@@ -158,7 +158,7 @@ fun LiveVoiceOverlay(
 
                 IconBtn(
                     icon = PuIcons.Close,
-                    description = "Close Live Voice",
+                    label = "Close Live Voice",
                     onClick = onDismiss,
                     tint = Color.White.copy(alpha = 0.7f),
                     iconSize = 22.dp,
@@ -170,7 +170,7 @@ fun LiveVoiceOverlay(
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f),
-                horizontalAlignment = Alignment.CenterVertically,
+                horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center,
             ) {
                 // Interactive Audio-Reactive Orb
@@ -219,6 +219,7 @@ fun LiveVoiceOverlay(
                     visible = lastReply.isNotBlank(),
                     enter = fadeIn(tween(200)),
                     exit = fadeOut(tween(150)),
+                    label = "assistantReply",
                 ) {
                     Box(
                         modifier = Modifier
@@ -266,8 +267,8 @@ fun LiveVoiceOverlay(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(bottom = 12.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(24.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(24.dp, Alignment.CenterHorizontally),
             ) {
                 // Mute / Unmute Button
                 Box(
