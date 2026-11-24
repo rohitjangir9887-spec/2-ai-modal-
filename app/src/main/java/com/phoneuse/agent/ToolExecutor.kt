@@ -18,7 +18,9 @@ import com.phoneuse.screen.ScreenSnapshot
 import com.phoneuse.screen.TreeCompressor
 import com.phoneuse.screen.UiNode
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
@@ -452,7 +454,7 @@ class ToolExecutor(
                 var performed = 0
                 var currentScreen = now
                 for (i in 0 until count) {
-                    if (gate.wasInterrupted()) break
+                    currentCoroutineContext().ensureActive()
                     val targetNode = if (i == 0) node else {
                         args.int("index")?.let { asked ->
                             element(liveIndex(asked, need(screenOrNull), currentScreen), currentScreen)
