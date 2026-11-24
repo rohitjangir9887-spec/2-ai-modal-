@@ -80,8 +80,11 @@ class JuliVoiceCommandCoordinatorTest {
 
     @Test
     fun classifyDetectsHindiPauseAndResume() {
-        val p = coordinator.classify("Ruko")
+        val p = coordinator.classify("thodi der ruko")
         assertEquals(VoiceCommandType.PAUSE, p.type)
+
+        val s = coordinator.classify("Ruko")
+        assertEquals(VoiceCommandType.STOP, s.type)
 
         val r = coordinator.classify("Ab aage continue karo")
         assertEquals(VoiceCommandType.RESUME, r.type)
