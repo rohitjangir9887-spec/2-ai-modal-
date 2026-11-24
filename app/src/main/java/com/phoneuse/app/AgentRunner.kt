@@ -60,6 +60,9 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -127,6 +130,14 @@ enum class Source {
  * The overlay (and touch blocking) only comes up once the agent is about to touch the device, or from the
  * start for [Source.ASSIST]; once up, it is always cleaned up.
  */
+/** A completed agent response that can be played in an active voice session. */
+data class AgentReplyEvent(
+    val conversationId: Long?,
+    val text: String?,
+    val cancelled: Boolean,
+    val taskId: String,
+)
+
 class AgentRunner(
     private val context: Context,
     private val settings: SettingsStore,
@@ -165,6 +176,10 @@ class AgentRunner(
 
     /** The current model turn's reply text while it streams; empty between turns and once the reply is saved. */
     val streamingText: StateFlow<String> = _streamingText.asStateFlow()
+
+    private val _completedReplies = MutableSharedFlow<AgentReplyEvent>(extraBufferCapacity = 8)
+    /** Successful and failed run conclusions, not provisional text tokens. */
+    val completedReplies: SharedFlow<AgentReplyEvent> = _completedReplies.asSharedFlow()
 
     private val _liveSteps = MutableStateFlow<List<StepLog>>(emptyList())
 
@@ -908,6 +923,7 @@ class AgentRunner(
             }
             guarded("usage log") { usage.record(kind, count = calls) }
         }
+        _completedReplies.tryEmit(AgentReplyEvent(id, answer, e.cancelled, e.taskId))
         rawStream = ""
         _streamingText.value = ""
         _liveSteps.value = emptyList()
@@ -917,7 +933,10 @@ class AgentRunner(
         val shouldReturn = ReturnPolicy.shouldReturn(e.source, usedDevice, e.stayInApp, e.outcome)
         // Finish any open dictation before bringing another activity forward or reading the reply aloud.
         val last = e.overlay.release(if (e.cancelled || shouldReturn) 0 else RESULT_LINGER_MS, runJob)
-        if (id != null && answer != null && !e.cancelled && e.source != Source.ROUTINE) {
+        // Live Voice owns speech playback while its conversation is active. Avoid overlapping Android TTS.
+        if (id != null && answer != null && !e.cancelled && e.source != Source.ROUTINE &&
+            !com.phoneuse.voice.LiveVoiceSession.shared.isSessionActive()
+        ) {
             guarded("read aloud") { readReplyAloud(answer) }
         }
         var returned = false
