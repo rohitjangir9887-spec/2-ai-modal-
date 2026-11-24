@@ -29,7 +29,7 @@ import java.util.concurrent.atomic.AtomicBoolean
  *
  * Implements a high-performance, non-blocking pipeline:
  * 1. Punctuation-based sentence chunking for streaming / low-latency playback.
- * 2. Multi-tier fallback: Kokoro ONNX -> NVIDIA Magpie Multilingual -> Android System TTS (ReadAloud).
+ * 2. Android system TTS for real speech until a verified neural ONNX inference adapter exists.
  * 3. Instant barge-in cancellation: safely terminates active audio track and speech generation.
  */
 object KokoroVoiceEngine {
@@ -106,29 +106,26 @@ object KokoroVoiceEngine {
             try {
                 _state.value = EngineState.Synthesizing(0, 1)
 
-                // Check if device has local Kokoro model weights downloaded
+                // A downloaded ONNX file alone is not an inference engine. The old local path
+                // generated non-speech tones, so always use real Android TTS until a verified
+                // compatible Kokoro runtime is integrated. Never report tones as spoken words.
                 val kokoroModelFile = File(context.filesDir, "models/kokoro-82m-v1.0.onnx")
-                val hasLocalKokoro = kokoroModelFile.exists() && kokoroModelFile.length() > 1024 * 1024
-
-                if (hasLocalKokoro) {
-                    playWithKokoro(context, cleanText, languageTag, profile, speed, volume)
-                } else {
-                    // Fallback Tier: Android System TTS with Indian locale & voice gender
-                    Log.d(TAG, "Kokoro ONNX local weights not downloaded; utilizing native Indian TTS fallback")
-                    withContext(Dispatchers.Main) {
-                        _state.value = EngineState.Playing(cleanText)
-                        ReadAloud.speak(
-                            context = context,
-                            text = cleanText,
-                            language = languageTag,
-                            speed = speed,
-                            gender = profile.gender,
-                            onDone = {
-                                _state.value = EngineState.Idle
-                                onDone?.invoke()
-                            },
-                        )
-                    }
+                if (kokoroModelFile.exists()) {
+                    Log.w(TAG, "Kokoro model file present but neural inference is not implemented; using Android TTS")
+                }
+                withContext(Dispatchers.Main) {
+                    _state.value = EngineState.Playing(cleanText)
+                    ReadAloud.speak(
+                        context = context,
+                        text = cleanText,
+                        language = languageTag,
+                        speed = speed,
+                        gender = profile.gender,
+                        onDone = {
+                            _state.value = EngineState.Idle
+                            onDone?.invoke()
+                        },
+                    )
                 }
             } catch (c: CancellationException) {
                 Log.d(TAG, "Speech synthesis cancelled (barge-in)")
