@@ -326,7 +326,8 @@ class LiveVoiceSession(
             return
         }
         val convId = _activeConversationId.value
-        if (!runner.send(convId, text, Source.ASSIST)) {
+        // Live Voice is a user-originated chat request, not an unsolicited side-assistant screen capture.
+        if (!runner.send(convId, text, Source.APP)) {
             speakReply("अभी दूसरा टास्क चल रहा है। उसका काम पूरा होने पर फिर कोशिश करें।")
             return
         }
